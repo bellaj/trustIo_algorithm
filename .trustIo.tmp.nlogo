@@ -5,6 +5,7 @@ globals[
   current_ticks;
   number_of_malicous_nodes
   number_of_good_nodes
+  security_treshold ; to vote trust score should be > security_treshold
 ]
 ;globals variables hold values that are accessible anywhere in th program
 ;link parameters
@@ -13,7 +14,9 @@ links-own [
 ]
 ;;peer's parameters
 turtles-own [
-  service               ;;each node offer a certian number of services
+  security_score
+  User_behavior
+  service               ;;each node offer a certian number of services, we will use just 0 or 1
   total_transactions    ;;N of tx performed by the peer
   my_trust_value        ;;peers label
   malicious             ;;is the peer malicious or not?
@@ -28,6 +31,7 @@ turtles-own [
 
 
 to setup
+  settings-initialization
   clear-all                       ;; clear everything on canvas
   setup-nodes                     ;; a procedure to set nodes
   setup-edges                     ;; a procedure to set edges
@@ -125,16 +129,29 @@ end
 
 
 ;--------------------------------------
-;
+; Initialition and entrypoint
 ;-------------------------------------
+to settings-initialization
+  set security_treshold 0.2
+end
 
 to go
   if not any? turtles [stop] ;exits if there are no more turtles
 
   set current_ticks ticks
   
+  transact
+  
+  layout
+  tick
 end
 
+;--------------------------------------
+; Functions
+;-------------------------------------
+to transact
+  
+end
 
 
 ;-------------------------------
