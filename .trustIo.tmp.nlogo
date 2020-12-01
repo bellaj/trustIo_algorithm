@@ -11,7 +11,10 @@ globals[
 ;globals variables hold values that are accessible anywhere in th program
 ;link parameters
 links-own [
-  weight ; each directed * is weighted
+  feedback_weight ; total sum of feedbacks between 2 peers
+  No_malicious_transaction_between_src_dest
+  total_transaction_between_src_dest
+  local_trust_ ; Normalized local trust between 2 peers
 ]
 ;;peer's parameters
 turtles-own [
@@ -62,7 +65,7 @@ to setup-nodes
 
     ;;set the label for the nodes
     set label precision peer_trust_value 2 ;1.25 2 digits after .
-
+ 
 
     ;;set malicious status
     set malicious false
@@ -72,6 +75,8 @@ to setup-nodes
     
     initialize-turtle-lists self; initialize turtles lists and vars
   ]
+  
+ 
 
 end
 
@@ -107,19 +112,19 @@ to setup-edges
 
       if other_turtle != nobody [ create-link-to other_turtle ]
       ask link-with other_turtle [
-        set weight 10
-        set label weight
+        set feedback_weight 10
+        set label feedback_weight
        
       ]
       show word " new link:" link-with other_turtle
       ask link-with other_turtle[
-          if weight = 0 ; for unkonw reason weight for some links isn't set in the previous operation
+          if feedback_weight = 0 ; for unkonw reason weight for some links isn't set in the previous operation
           [
           show word "error weigh detected and corrected" other_turtle
-          set weight 10
+          set feedback_weight 10
           
         ]
-          show word "wieight is" weight
+          show word "wieight is" feedback_weight
       ]
     ]
   ]
@@ -285,20 +290,42 @@ to perform-transaction [peer1 peer2]
   ;;perform actions via peer1
   ask turtle peer1_id
   [
+    show word "ask turtle" peer1
+    show word "ask turtle" peer2
     ;;update origional peer (peer1) feedback history based on the feedback from peer2
- 
+   
+
+  
     ifelse peer2_act_maliciously
-    [setup-feedback_edges_between peer1 peer2 -1]
-    [setup-feedback_edges_between peer1 peer2 1]
+    [
+     setup-feedback_edges_between peer1 peer2 -1 
+      
+    ]
+    [
+      setup-feedback_edges_between peer1 peer2 1
+      
+    ]
+    
+    
+     ask link-with peer2 [
+       if peer2_act_maliciously
+      [     
+        set No_malicious_transaction_between_src_dest No_malicious_transaction_between_src_dest + 1 ; one more malicious tx
+      ]
+      set total_transaction_between_src_dest total_transaction_between_src_dest + 1
+      
+    ]
+    
+    compute-local-trust peer1 peer2
+    
     
     set total_transactions total_transactions + 1
-
-   
+  
  
    ]
 
   
-
+;; to rimove
   ;;determine if the transaction was successful
   if not peer1_act_maliciously AND not peer2_act_maliciously
   [
@@ -319,23 +346,24 @@ to setup-feedback_edges_between [peer1 peer2 feedback] ; P1 => P2
     ask peer1
     [
       let other_turtle peer2
-
-      if other_turtle != nobody [ create-link-to other_turtle ]
+      if link-with other_turtle = nobody and other_turtle != nobody
+      [ create-link-to other_turtle ]
+    
       ask link-with other_turtle [
         
-        set weight weight + feedback
-        set label weight
+        set feedback_weight feedback_weight + feedback
+        set label feedback_weight
        
       ]
       show word " new link:" link-with other_turtle
       ask link-with other_turtle[
-          if weight = 0 ; for unkonw reason weight for some links isn't set in the previous operation
+          if feedback_weight = 0 ; for unkonw reason feedback_weight for some links isn't set in the previous operation
           [
           show word "error weigh detected and corrected" other_turtle
-          set weight weight + feedback
+          set feedback_weight feedback_weight + feedback
           
         ]
-          show word "wieight is" weight
+          show word "wieight is" feedback_weight
       ]
     ]
   
@@ -344,6 +372,41 @@ to setup-feedback_edges_between [peer1 peer2 feedback] ; P1 => P2
     [
       layout-spring turtles links 0.3 (world-width / (sqrt number_of_nodes)) 1
     ]
+end
+
+to compute-local-trust [peer1 peer2]  ;local trust that peer1 has in 2
+  
+  let sigma_sum 0
+  
+   ask peer1
+  [
+    ask my-links ;the agentset containing all links
+    [
+
+      if feedback_weight > 0 [
+      set sigma_sum sigma_sum + feedback_weight
+      ]
+      
+    ]
+
+    ask link-with peer2 [
+      if total_transaction_between_src_dest > 0
+      [
+      ifelse feedback_weight > 0 [
+      let sum_p_q feedback_weight
+      let AR_p_q   (total_transaction_between_src_dest - No_malicious_transaction_between_src_dest) / total_transaction_between_src_dest
+      let LT  precision local_trust_ ( sum_p_q / sigma_sum ) * AR_p_q 2
+      set  local_trust_ LT
+           
+      show word "==>> local trust" local_trust_
+      set label local_trust_
+        ]
+        [
+          set label 0
+        ]
+      ]
+    ]
+  ]
 end
 ;-------------------------------
 ;Display settings
