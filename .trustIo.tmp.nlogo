@@ -269,15 +269,15 @@ to perform-transaction [peer1 peer2]
     ;; peers would act maliously with a given probability defined in the interface
     ifelse [malicious] of peer1 ;;this peer is malicious ;; IMO malicious peers can act or not maliciously
     [
-      if random 101 <= malicious_transactions ; % defined by interface and < 100
-      [        set peer1_act_maliciously true      ]
+      if random 101 <= malicious_transactions_percentage ; % defined by interface and < 100
+      [    set peer1_act_maliciously true      ]
     ]
     [      set peer1_act_maliciously false    ]
 
     ;;check peer2
     ifelse [malicious] of peer2 ;;this peer is malicious
     [ 
-    if random 101 <= malicious_transactions    [        set peer2_act_maliciously true     ]
+    if random 101 <= malicious_transactions_percentage    [        set peer2_act_maliciously true     ]
     ]
     [      set peer2_act_maliciously false    ]
  
@@ -287,13 +287,15 @@ to perform-transaction [peer1 peer2]
   [
     ;;update origional peer (peer1) feedback history based on the feedback from peer2
  
-
-    setup-feedback_edges_between peer1 peer2 2
+    ifelse peer2_act_maliciously
+    [setup-feedback_edges_between peer1 peer2 -1]
+    [setup-feedback_edges_between peer1 peer2 1]
+    
     set total_transactions total_transactions + 1
 
    
  
-      ]
+   ]
 
   
 
@@ -311,7 +313,7 @@ end
 
 to setup-feedback_edges_between [peer1 peer2 feedback] ; P1 => P2 
   
- show "--------------"
+ 
   show word "setting up edge between" peer1
   show word "and" peer2
     ask peer1
@@ -320,7 +322,8 @@ to setup-feedback_edges_between [peer1 peer2 feedback] ; P1 => P2
 
       if other_turtle != nobody [ create-link-to other_turtle ]
       ask link-with other_turtle [
-        set weight feedback
+        
+        set weight weight + feedback
         set label weight
        
       ]
@@ -329,7 +332,7 @@ to setup-feedback_edges_between [peer1 peer2 feedback] ; P1 => P2
           if weight = 0 ; for unkonw reason weight for some links isn't set in the previous operation
           [
           show word "error weigh detected and corrected" other_turtle
-          set weight feedback
+          set weight weight + feedback
           
         ]
           show word "wieight is" weight
