@@ -140,6 +140,7 @@ end
 ;-------------------------------------
 to settings-initialization
   set security_treshold 0.2
+  set Gamma 0.1 ; to modify treshold of confergence
 end
 
 to initialize-turtle-lists [peer]
@@ -158,7 +159,7 @@ to go
   set current_ticks ticks
   
   transact
-  
+  update_trust
   ;layout
   tick
 end
@@ -169,7 +170,9 @@ end
 to transact
   
    let peer1 one-of turtles
+  if evaluate-connections [ ;=> this might disturb the calcul if the GT is not alreaady calculated as it will remove links between peers
    evaluate-current-connections peer1
+    ]
    let potential_partners_list find-potential_peers-to-connect-with 1 ;nodes providing the service
    show word "potential_partners_list " potential_partners_list 
     ;;check if there are items in the list
@@ -364,15 +367,19 @@ to setup-feedback_edges_between [peer1 peer2 feedback] ; P1 => P2
       let other_turtle peer2
      if other_turtle = nobody
      [stop]
-      if link-with other_turtle = nobody and other_turtle != nobody
+    
+      if link-with other_turtle = nobody  ; create new link
       [ 
-      create-link-to other_turtle 
+      create-link-to other_turtle
+      show "======================================" 
       show word " new link:" link-with other_turtle
+      show "======================================" 
       set list_other_peer_id lput other_turtle list_other_peer_id
         ask peer2[
-        set list_in_peer_id lput peer1 list_in_peer_id
+        if  not member? peer1 list_in_peer_id ;here
+        [set list_in_peer_id lput peer1 list_in_peer_id]
+        ]
       ]
-    ]
     
     
       ask link-with other_turtle [
@@ -439,31 +446,35 @@ end
 to compute-global-trust [peer]
  
 let total_trust 0.0
-
+show word "computing GT of" peer
 ask peer
 [
-    let GT_P 0
+    let GT_P global_initial_trust_value
     let GT_P' 0
  ; ask my-links ;the agentset containing all links
     let GTs []
-    let sum_GT_P sum_global_trust  peer
+    let sum_GT_P sum_global_trust  peer ;sum of GT of peers pointing to current peer
     
    foreach list_in_peer_id
    [ ?1 ->
       ;if feedback_weight > 0 [ ]
-    
+    show word "eibouring nodes" list_in_peer_id
+    show  "computing GT of step1"
       ask  ?1 [
+        show word "the node" ?1
         ;set GT_P global_trust_value; set the GT of current 
         let GT_i global_trust_value
-        
-        ask link-with peer [
+        show  "computing GT of step2"
+       if link-with peer != nobody[
+          ask link-with peer [
+          show  "computing GT of step3"
         if sum_GT_P > 0
         [
         let GT_P_i (local_trust_ * GT_i) / (sum_GT_P)
         set GTs lput GT_P_i GTs
           ]
         ]
-      
+      ]
       ]
     ]
     
@@ -473,17 +484,18 @@ foreach GTs
      set GT_P GT_P + ?1
     ]
     
-    ;while [not convergence GT_P]
-    ;[
-    ;]
+  
     set global_trust_value GT_P
+    set label precision global_trust_value 2
 ]
 
 
 end
 
-to-report sum_global_trust[ list_peers_id]
+to-report sum_global_trust[ peer]
   let temp_sum 0
+  ask peer[
+
    foreach list_in_peer_id
    [ ?1 ->
     
@@ -494,9 +506,31 @@ to-report sum_global_trust[ list_peers_id]
     ]
     
     ]
+  ]
   
   
   report temp_sum
+end
+
+
+
+
+to update_trust
+  show "updating trust"
+  let old_GT global_initial_trust_value
+  let new_GT global_initial_trust_value
+   while [not convergence old_GT new_GT ]
+    [
+  set old_GT sum [global_trust_value] of turtles ;
+  ask turtles [ ; ask all peers
+    ;set old_GT lput global_trust_value old_GT
+    compute-global-trust self
+    ;set new_GT lput global_trust_value new_GT
+  ]
+  set new_GT sum [global_trust_value] of turtles ;
+  
+
+    ]
 end
 
 
@@ -507,13 +541,6 @@ let converge false
   
 report converge
   
-end
-
-to update_trust
-  
- ;while [not convergence GT_P]
-    ;[
-    ;]
 end
 ;----------------
 ;random walker
