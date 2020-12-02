@@ -30,6 +30,7 @@ turtles-own [
   list_in_peer_id ; a list of peers that rated the current peer
   
   global_trust_value; GT(P)
+  trust_score; T(P)
 ]
 
 
@@ -61,6 +62,7 @@ to setup-nodes
 
     ;;initialise the initial trust values
     set global_trust_value global_initial_trust_value
+    set trust_score global_initial_trust_value
 
     ;;set the label for the nodes
     set label precision global_trust_value 2 ;1.25 2 digits after .
@@ -140,7 +142,7 @@ end
 ;-------------------------------------
 to settings-initialization
   set security_treshold 0.2
-  set Gamma 0.1 ; to modify treshold of confergence
+  set Gamma 0.001 ; to modify treshold of confergence
 end
 
 to initialize-turtle-lists [peer]
@@ -155,9 +157,11 @@ to go
 
   
   if not any? turtles [stop] ;exits if there are no more turtles
-
+ 
   set current_ticks ticks
-  
+  show "---------------------------------"
+  show word "the current tick " current_ticks
+  show "---------------------------------"
   transact
   update_trust
   ;layout
@@ -169,12 +173,18 @@ end
 ;-------------------------------------
 to transact
   
-   let peer1 one-of turtles
+  let peer1 one-of turtles   ; will request a service from another peer
+  
+  
   if evaluate-connections [ ;=> this might disturb the calcul if the GT is not alreaady calculated as it will remove links between peers
    evaluate-current-connections peer1
     ]
-   let potential_partners_list find-potential_peers-to-connect-with 1 ;nodes providing the service
-   show word "potential_partners_list " potential_partners_list 
+  
+  
+   let potential_partners_list find-potential_peers-to-connect-with 1 [who] of peer1  ;nodes providing the service
+  
+   print (word "==> potential_partners_list of" peer1 " are " potential_partners_list )
+ 
     ;;check if there are items in the list
     let peer2 0 ; will host the other peer who provides the service
 
@@ -184,7 +194,6 @@ to transact
     ]
     [
       ;;select a random peer
-      let list_counter 0
     ifelse choose_random_or_most_trusted ; defined in the interface => choose most ranked node or at random
     [
       set peer2 item random (length potential_partners_list) potential_partners_list
@@ -192,23 +201,19 @@ to transact
     [
       set peer2 item 0 potential_partners_list ;;set the chosen peer to the most trusted peer
     ]
-      while [([who] of peer2 = [who] of peer1) AND list_counter < length potential_partners_list] ;to avoid requesting from itself
-      ;who holds the turtle's "who number" or ID number, an integer greater than or equal to zero.
-      [
-        set peer2 item list_counter potential_partners_list
-        set list_counter list_counter + 1
-      ]
-
+   
       ;;final check
       if [who] of peer1 = [who] of peer2
       [
         stop ;;exit the procedure
+        show " ERROR!!!!!! exiting for equality reason"
       ]
     ]
 
     ;;perform the transaction between two peers
-    perform-transaction peer1 peer2
-    compute-global-trust peer2
+    perform-transaction-and-rate peer1 peer2
+  
+    ;compute-global-trust peer2
 end
 
 ;not mine
@@ -230,19 +235,9 @@ end
 ;Not mine
 ;;finding peers who offer the desired service
 ;;returns a list of the top [no_peers_to_return] peers
-to-report find-potential_peers-to-connect-with [required-service] ; required-service is a parameter, the number of possible services is defined in the interface ==> here the random walk should be performed
-  let potential_peers other turtles with [service = required-service]
-  show word "potential_peers" potential_peers
-  ;;determine the trust for each peer in the list
-  ;ask potential_peers  <===========Compute the trust normaly
-  ;[
-    ;;set my_trust_value calculate-general-peer-trust self
-    ;set peer_trust_value calculate-adaptive-trust self
-    
-    ;set label precision peer_trust_value 2
-  ;]
-  
-  ;let no_peers_to_return precision (number_of_peers / 3) 0; to change => N of peers to retun in the list
+to-report find-potential_peers-to-connect-with [required-service peerid] ; required-service is a parameter, the number of possible services is defined in the interface ==> here the random walk should be performed
+  let potential_peers other turtles with [service = required-service and who != peerid ] ; add and trust_score > trust_treshold
+   
   let no_peers_to_return  number_of_peers - 1
   let sorted_list 0
   ;;return number of peers
@@ -260,7 +255,7 @@ to-report find-potential_peers-to-connect-with [required-service] ; required-ser
 end
 
 ;;this method performs the transaction part of a collaboration
-to perform-transaction [peer1 peer2]   ; Transaction is from peer2 to peer1
+to perform-transaction-and-rate [peer1 peer2]   ; Transaction is from peer2 to peer1
 
   ;;get the id of origional node
   let peer1_id [who] of peer1 ; destination
@@ -269,61 +264,37 @@ to perform-transaction [peer1 peer2]   ; Transaction is from peer2 to peer1
 
   ;;get the exact time of the transaction
   let time_of_transaction current_ticks
-
-  ;;get the context factor of the transaction
    
 
   ;;determing if any of the peers will act maliciously during this transaction
   ;let peer1_act_maliciously true
   let peer2_act_maliciously true
 
- 
-    ;;check peer1
-    ;; peers would act maliously with a given probability defined in the interface
-  
-  
-    if [malicious] of peer2 ;;this peer is malicious ; it gives only malicious tx
+  if [malicious] of peer2 ;;this peer is malicious ; it gives only malicious tx
     [
-      ;if random 101 <= malicious_transactions_percentage ; % defined by interface and < 100
-     ; [    
+    ;if random 101 <= malicious_transactions_percentage ; % defined by interface and < 100
+    ; [    
       set peer2_act_maliciously true 
     ;]
     ]
-   ; [      set peer2_act_maliciously false    ]
-
   
-      if not [malicious] of peer2 ;;this peer is malicious ;; IMO malicious peers can act or not maliciously
+ if not [malicious] of peer2 ;;this peer is malicious ;; IMO malicious peers can act or not maliciously
     [
       ifelse random 101 <= malicious_transactions_percentage ; % defined by interface and < 100
       [    set peer2_act_maliciously true      ]
-      [    set peer2_act_maliciously false      ]
+      [    set peer2_act_maliciously false     ]
     ]
    
-  
-    ;;check peer2
-    ;ifelse [malicious] of peer2 ;;this peer is malicious
-    ;[ 
-    ;if random 101 <= malicious_transactions_percentage    [        set peer2_act_maliciously true     ]
-    ;]
-    ;;[      set peer2_act_maliciously false    ]
+  show word "=> peer2 will act (false) in case 0% set " peer2_act_maliciously
  
-
   ;;perform actions via peer1
   ask turtle peer1_id
   [
-    show word "ask turtle" peer1 
-    show word "ask turtle" peer2
-    ;;update origional peer (peer1) feedback history based on the feedback from peer2
+   print (word "==> peer " peer1 "requests tx from" peer2 )
+   ;;update origional peer (peer1) feedback history based on the feedback from peer2
    
-    ifelse peer2_act_maliciously
-    [
-     setup-feedback_edges_between peer1 peer2 -1 
-      
-    ]
-    [
-      setup-feedback_edges_between peer1 peer2 1
-      
-    ]
+    ifelse peer2_act_maliciously     [ setup-feedback_edges_between peer1 peer2 -1 ]
+    [ setup-feedback_edges_between peer1 peer2 1 ]
     
     
      ask link-with peer2 [
@@ -336,22 +307,13 @@ to perform-transaction [peer1 peer2]   ; Transaction is from peer2 to peer1
     ]
     
     compute-local-trust peer1 peer2
-    
-    
+   
     set total_transactions total_transactions + 1
   
  
    ]
 
   
-;; to rimove
-  ;;determine if the transaction was successful
-  ;if not peer1_act_maliciously AND not peer2_act_maliciously
-  ;[
-  ;  set successful_transactions successful_transactions + 1
-  ;]
-
-  ;;update the global number of transactions
   set total_global_transactions total_global_transactions + 1
 end
 
@@ -360,8 +322,6 @@ end
 to setup-feedback_edges_between [peer1 peer2 feedback] ; P1 => P2 
   
  
-  show word "setting up edge between" peer1  
-  show word "and" peer2
     ask peer1
     [
       let other_turtle peer2
@@ -372,29 +332,32 @@ to setup-feedback_edges_between [peer1 peer2 feedback] ; P1 => P2
       [ 
       create-link-to other_turtle
       show "======================================" 
-      show word " new link:" link-with other_turtle
+      show word " ==> new link:" link-with other_turtle
       show "======================================" 
-      set list_other_peer_id lput other_turtle list_other_peer_id
-        ask peer2[
-        if  not member? peer1 list_in_peer_id ;here
-        [set list_in_peer_id lput peer1 list_in_peer_id]
-        ]
-      ]
+         ]
+
     
     
       ask link-with other_turtle [
         let original_feedback feedback_weight
         set feedback_weight feedback_weight + feedback
-        ;set label feedback_weight
-  
+
           if feedback_weight = original_feedback ; for unkonw reason feedback_weight for some links isn't set in the previous operation
           [
           show word "error weigh detected and corrected" other_turtle
           set feedback_weight feedback_weight + feedback
           
         ]
-          ;show word "wieight is" feedback_weight
+           
       ]
+      
+        if  not member? peer2 list_other_peer_id[set list_other_peer_id lput other_turtle list_other_peer_id]
+    
+        ask other_turtle[
+        if  not member? peer1 list_in_peer_id ;here
+        [set list_in_peer_id lput peer1 list_in_peer_id]
+        ]
+   
     ]
 
     ; make the network look a little prettier
@@ -446,7 +409,7 @@ end
 to compute-global-trust [peer]
  
 let total_trust 0.0
-show word "computing GT of" peer
+show word "computing GT of " peer
 ask peer
 [
     let GT_P global_initial_trust_value
@@ -454,23 +417,24 @@ ask peer
  ; ask my-links ;the agentset containing all links
     let GTs []
     let sum_GT_P sum_global_trust  peer ;sum of GT of peers pointing to current peer
-    
+   print (word "====> pointing peers to " peer "are" list_in_peer_id)
    foreach list_in_peer_id
    [ ?1 ->
       ;if feedback_weight > 0 [ ]
-    show word "eibouring nodes" list_in_peer_id
-    show  "computing GT of step1"
+      ;show  "computing GT of step1"
       ask  ?1 [
-        show word "the node" ?1
-        ;set GT_P global_trust_value; set the GT of current 
-        let GT_i global_trust_value
-        show  "computing GT of step2"
+         
+       ; set the GT of current peer
+       let GT_i global_trust_value
+       
+        
        if link-with peer != nobody[
           ask link-with peer [
-          show  "computing GT of step3"
+          ;show  "computing GT of step3"
+        let local_trust_i local_trust_
         if sum_GT_P > 0
         [
-        let GT_P_i (local_trust_ * GT_i) / (sum_GT_P)
+        let GT_P_i (local_trust_i * GT_i) / (sum_GT_P)
         set GTs lput GT_P_i GTs
           ]
         ]
@@ -478,12 +442,8 @@ ask peer
       ]
     ]
     
-    
-foreach GTs
-    [ ?1 ->
-     set GT_P GT_P + ?1
-    ]
-    
+    set GT_P sum GTs 
+
   
     set global_trust_value GT_P
     set label precision global_trust_value 2
@@ -495,20 +455,18 @@ end
 to-report sum_global_trust[ peer]
   let temp_sum 0
   ask peer[
-
+ ;set old_GT sum [global_trust_value] of turtles ;
    foreach list_in_peer_id
    [ ?1 ->
     
     ask ?1[
-
-      
+    
      set temp_sum temp_sum + global_trust_value
     ]
     
     ]
   ]
-  
-  
+   
   report temp_sum
 end
 
@@ -517,19 +475,30 @@ end
 
 to update_trust
   show "updating trust"
+  
   let old_GT global_initial_trust_value
   let new_GT global_initial_trust_value
+  
+  set old_GT sum [global_trust_value] of turtles ;
+    ask turtles [ ; ask all peers
+    ;set old_GT lput global_trust_value old_GT
+    compute-global-trust self
+  ]
+  set new_GT sum [global_trust_value] of turtles ;
    while [not convergence old_GT new_GT ]
     [
   set old_GT sum [global_trust_value] of turtles ;
   ask turtles [ ; ask all peers
     ;set old_GT lput global_trust_value old_GT
     compute-global-trust self
+        show word "peer asked to update" self
     ;set new_GT lput global_trust_value new_GT
+     
   ]
   set new_GT sum [global_trust_value] of turtles ;
-  
-
+  show word "the convergence old_GT" old_GT
+  show word "the convergence new_GT" new_GT
+  show "-------------------------------------"
     ]
 end
 
@@ -538,7 +507,7 @@ to-report convergence [GT GT']
 let converge false
   if abs(GT' - GT) <= Gamma
   [set converge true]
-  
+  show word "the convergence" abs(GT' - GT)
 report converge
   
 end
