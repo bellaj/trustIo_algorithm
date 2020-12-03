@@ -79,7 +79,7 @@ to setup-nodes
     ;;set the label for the nodes
     set label precision global_trust_value 2 ;1.25 2 digits after .
 
-
+    
     ;;set malicious status
     set malicious false
 
@@ -330,7 +330,9 @@ to perform-transaction-and-rate [peer1 peer2]   ; Transaction is from peer2 to p
      ask out-link-to peer2 [
        if peer2_act_maliciously
       [
+        print( word "acts maliciously" peer2)
         set No_malicious_transaction_between_src_dest No_malicious_transaction_between_src_dest + 1 ; one more malicious tx
+        print (word "No_malicious_transaction_between_src_dest in incremented and new value is " No_malicious_transaction_between_src_dest)
       ]
       set total_transaction_between_src_dest total_transaction_between_src_dest + 1
 
@@ -412,23 +414,19 @@ to compute-local-trust [peer1 peer2]  ;local trust that peer1 has in 2
     if feedback_weight > 0 [
     set sum_feedback sum_feedback + feedback_weight
      ]
-
     ]
-    ]
-  
-    ;set sum_feedback sum [ feedback_weight > 0] of my-out-links
-    print( word "7777 sum_feedback of "  peer1 "is" sum_feedback)
-    ;if sum_feedback = 0
-    ;[set sum_feedback  1]
-    
-    ask my-out-links[
-      if total_transaction_between_src_dest > 0
+     
+      ask out-link-to ?1 [
+      
+            if total_transaction_between_src_dest > 0
       [
       let sum_p_q feedback_weight
+      show word "sum_p_q" sum_p_q
       ifelse sum_p_q > 0 [
-      
+      print (word " total_transaction_between_src_dest betwzeen" peer1 "=>" peer2 "is=" total_transaction_between_src_dest "and No_malicious_transaction_between_src_dest " No_malicious_transaction_between_src_dest)
       let AR_p_q   (total_transaction_between_src_dest - No_malicious_transaction_between_src_dest) / total_transaction_between_src_dest
-;!! case AR <0??,
+      print (word "txtotal" total_transaction_between_src_dest "nomalicious" No_malicious_transaction_between_src_dest)
+            ;!! case AR <0??,
       print (word " AR_p_q between" peer1 "=>" peer2 "is=" AR_p_q "and sum_p_q " sum_p_q)
       set sum_p_q sum_p_q * AR_p_q
       let LTR  precision  ((sum_p_q / sum_feedback) ) 2
@@ -439,11 +437,23 @@ to compute-local-trust [peer1 peer2]  ;local trust that peer1 has in 2
       set label  local_trust_
         ]
         [
-          set label 0
+          set local_trust_ 0
+          set label local_trust_
         ]
         
        print (word "00 Local trust between" peer1 "=>" peer2 "is=" local_trust_)
       ]
+      ]
+      
+    ]
+  
+    ;set sum_feedback sum [ feedback_weight > 0] of my-out-links
+    ;print( word "7777 sum_feedback of "  peer1 "is" sum_feedback)
+    ;if sum_feedback = 0
+    ;[set sum_feedback  1]
+    
+    ask my-out-links[
+
     ]
   ]
 end
@@ -471,23 +481,21 @@ ask peer
 
        ; set the GT of current peer
        let GT_i global_trust_value
-
-
-       if out-link-to peer != nobody[
-          ask out-link-to peer [
-          ;show  "computing GT of step3"
-        let local_trust_i local_trust_
+        
+        ask out-link-to peer [  ;!!!!!!!
+         let local_trust_i local_trust_
         if sum_GT_P > 0
         [
         let GT_P_i (local_trust_i * GT_i) / (sum_GT_P)
         set GTs lput GT_P_i GTs
           ]
         ]
-      ]
+
+
       ]
     ]
 
-    if length GTs > 1 and (sum GTs > 0)
+    if length GTs > 0 and (sum GTs > 0)
     [set GT_P sum GTs]
 
 print (word "====> new GT of" peer "is " GT_P)
