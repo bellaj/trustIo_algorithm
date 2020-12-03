@@ -3,6 +3,7 @@ globals[
   total_global_transactions ;  the global number of transactions
   number_of_nodes;
   current_ticks;
+  trust_checkpoint; ;ticks where the system updates the trust 
   number_of_malicous_nodes
   number_of_good_nodes
   security_treshold ; to vote trust score should be > security_treshold
@@ -22,7 +23,7 @@ turtles-own [
   security_score
   User_behavior
   service               ;;each node offer a certian number of services, we will use just 0 or 1
-  total_transactions    ;;N of tx performed by the peer
+  peer_total_transactions    ;;N of tx performed by the peer
   ;peer_trust_value        ;;peers label
   malicious             ;;is the peer malicious or not?
 
@@ -142,14 +143,14 @@ end
 ;-------------------------------------
 to settings-initialization
   set security_treshold 0.2
-  set Gamma 0.001 ; to modify treshold of confergence
+  set Gamma 0.01 ; to modify treshold of confergence
 end
 
 to initialize-turtle-lists [peer]
   ;;initialise feedback lists
   set list_other_peer_id []
   set list_in_peer_id []
-
+  set trust_checkpoint 0
 end
 
 
@@ -163,8 +164,13 @@ to go
   show word "the current tick " current_ticks
   show "---------------------------------"
   transact
-  if update_trust_or_not and current_ticks > 20 [
+  
+  let tick_checkpoint round (current_ticks / 1000) 
+  
+  if update_trust_or_not and (tick_checkpoint = trust_checkpoint + 1) [   ;update the trust in the network after 1000 tick
   update_trust
+  set trust_checkpoint tick_checkpoint
+     
   ]
   ;layout
   tick
@@ -310,12 +316,12 @@ to perform-transaction-and-rate [peer1 peer2]   ; Transaction is from peer2 to p
 
     compute-local-trust peer1 peer2
 
-    set total_transactions total_transactions + 1
-
+    
+set peer_total_transactions peer_total_transactions + 1
 
    ]
 
-
+ 
   set total_global_transactions total_global_transactions + 1
 end
 
@@ -448,7 +454,7 @@ ask peer
     [set GT_P sum GTs]
 
 print (word "====> new GT of" peer "is " GT_P)
-    
+
     set global_trust_value GT_P
     set label precision global_trust_value 2
 ]
@@ -472,11 +478,11 @@ to-report sum_global_trust[ peer]
 
     ]
     ]
-    
-    
+
+
   ]
 report temp_sum
-  
+
 end
 
 
@@ -492,28 +498,28 @@ to update_trust
 
     ask turtles [ ; ask all peers
     ;set old_GT lput global_trust_value old_GT
-     print (word "global trust of " self "before is " global_trust_value)
+    print (word "global trust of " self "before is " global_trust_value)
     compute-global-trust self
-     ;print (word "global trust of " self "after is " global_trust_value)
+    print (word "global trust of " self "after is " global_trust_value)
       ]
 
    set new_GT sum [global_trust_value] of turtles ;
-  
+
   ;------- to activate
-;   while [not convergence old_GT new_GT ]
-;    [
+   while [not convergence old_GT new_GT ]
+    [
+  set old_GT new_GT
+  ask turtles [ ; ask all peers
 
-;  ask turtles [ ; ask all peers
- 
-;    compute-global-trust self
- 
+    compute-global-trust self
 
-;  ]
-;  set new_GT sum [global_trust_value] of turtles ;
-;  show word "the convergence old_GT" old_GT
-;  show word "the convergence new_GT" new_GT
+  ]
+  set new_GT sum [global_trust_value] of turtles ;
+  print ( word "the convergence old_GT" old_GT "and new GT" new_GT)
+
 ;  show "-------------------------------------";
-;    ]
+    ]
+  show "====================Successfull convergence==============================="
 end
 
 
@@ -521,7 +527,7 @@ to-report convergence [GT GT']
 let converge false
   if abs(GT' - GT) <= Gamma
   [set converge true]
-  show word "the convergence" abs(GT' - GT)
+  show word "the difference is " abs(GT' - GT)
 report converge
 
 end
