@@ -1,13 +1,22 @@
+;directed-link-breed [  Dlinks Dlink]
+;Dlinks-own[
+;  feedback_weight ; total sum of feedbacks between 2 peers
+;  No_malicious_transaction_between_src_dest
+;  total_transaction_between_src_dest
+;  local_trust_ ; Normalized local trust between 2 peers
+;]
+
 globals[
   time
   total_global_transactions ;  the global number of transactions
   number_of_nodes;
   current_ticks;
-  trust_checkpoint; ;ticks where the system updates the trust 
+  trust_checkpoint; ;ticks where the system updates the trust
   number_of_malicous_nodes
   number_of_good_nodes
   security_treshold ; to vote trust score should be > security_treshold
   successful_transactions;
+  malicious_transactions
   Gamma ; convergence treshold
 ]
 ;globals variables hold values that are accessible anywhere in th program
@@ -17,6 +26,7 @@ links-own [
   No_malicious_transaction_between_src_dest
   total_transaction_between_src_dest
   local_trust_ ; Normalized local trust between 2 peers
+  
 ]
 ;;peer's parameters
 turtles-own [
@@ -32,6 +42,7 @@ turtles-own [
 
   global_trust_value; GT(P)
   trust_score; T(P)
+  total_Local_trust
 ]
 
 
@@ -113,20 +124,20 @@ to setup-edges
       let other_turtle one-of other turtles
 
       if other_turtle != nobody [ create-link-to other_turtle ]
-      ask link-with other_turtle [
+      ask out-link-to other_turtle [
         set feedback_weight 10
         ;set label feedback_weight
 
       ]
-      show word " new link:" link-with other_turtle
-      ask link-with other_turtle[
+      show word " new link:" out-link-to other_turtle
+      ask out-link-to other_turtle[
           if feedback_weight = 0 ; for unkonw reason weight for some links isn't set in the previous operation
           [
           show word "error weigh detected and corrected" other_turtle
           set feedback_weight 10
 
         ]
-          show word "wieight is" feedback_weight
+          show word "weight is" feedback_weight
       ]
     ]
   ]
@@ -144,6 +155,8 @@ end
 to settings-initialization
   set security_treshold 0.2
   set Gamma 0.01 ; to modify treshold of confergence
+  set malicious_transactions 0
+  set successful_transactions 0
 end
 
 to initialize-turtle-lists [peer]
@@ -164,15 +177,19 @@ to go
   show word "the current tick " current_ticks
   show "---------------------------------"
   transact
-  
-  let tick_checkpoint round (current_ticks / 1000) 
-  
-  if update_trust_or_not and (tick_checkpoint = trust_checkpoint + 1) [   ;update the trust in the network after 1000 tick
+
+  let tick_checkpoint round (current_ticks / 1000)
+
+  if update_trust_or_not and (tick_checkpoint = trust_checkpoint + 1) [   ;update the trust in the network after 500 tick
   update_trust
   set trust_checkpoint tick_checkpoint
-     
+
   ]
   ;layout
+  ask turtles [
+    set total_Local_trust sum [local_trust_] of my-out-links
+    ;print( word"--9999---  total local trust of " self "in others is " round total_Local_trust)
+  ]
   tick
 end
 
@@ -219,7 +236,7 @@ to transact
     ]
 
     ;;perform the transaction between two peers
-    perform-transaction-and-rate peer1 peer2
+    perform-transaction-and-rate peer1 peer2    ;peer2 send tx to peer1 and get feedback freom it
 
     ;compute-global-trust peer2
 end
@@ -230,7 +247,7 @@ end
 to evaluate-current-connections [peer]
   ask peer
   [
-    ask my-links ;the agentset containing all links
+    ask my-out-links ;the agentset containing all links
     [
       if [global_trust_value] of other-end < trust_threshold
       [
@@ -288,12 +305,12 @@ to perform-transaction-and-rate [peer1 peer2]   ; Transaction is from peer2 to p
 
  if not [malicious] of peer2 ;;this peer is malicious ;; IMO malicious peers can act or not maliciously
     [
-      ifelse random 101 <= malicious_transactions_percentage ; % defined by interface and < 100
+      ifelse random 101 < malicious_transactions_percentage ; % defined by interface and < 100
       [    set peer2_act_maliciously true      ]
       [    set peer2_act_maliciously false     ]
     ]
 
-  show word "=> peer2 will act (false) in case 0% set " peer2_act_maliciously
+  ;show word "=> peer2 will act (false) in case 0% set " peer2_act_maliciously
 
   ;;perform actions via peer1
   ask turtle peer1_id
@@ -301,11 +318,16 @@ to perform-transaction-and-rate [peer1 peer2]   ; Transaction is from peer2 to p
    print (word "==> peer " peer1 "requests tx from" peer2 )
    ;;update origional peer (peer1) feedback history based on the feedback from peer2
 
-    ifelse peer2_act_maliciously     [ setup-feedback_edges_between peer1 peer2 -1 ]
-    [ setup-feedback_edges_between peer1 peer2 1 ]
+    ifelse peer2_act_maliciously     [ 
+    setup-feedback_edges_between peer1 peer2 -1
+    set malicious_transactions malicious_transactions + 1
+    ]
+    [ setup-feedback_edges_between peer1 peer2 1
+    set successful_transactions successful_transactions + 1
+    ]
 
 
-     ask link-with peer2 [
+     ask out-link-to peer2 [
        if peer2_act_maliciously
       [
         set No_malicious_transaction_between_src_dest No_malicious_transaction_between_src_dest + 1 ; one more malicious tx
@@ -316,12 +338,12 @@ to perform-transaction-and-rate [peer1 peer2]   ; Transaction is from peer2 to p
 
     compute-local-trust peer1 peer2
 
-    
+
 set peer_total_transactions peer_total_transactions + 1
 
    ]
 
- 
+
   set total_global_transactions total_global_transactions + 1
 end
 
@@ -332,21 +354,20 @@ to setup-feedback_edges_between [peer1 peer2 feedback] ; P1 => P2
 
     ask peer1
     [
-      let other_turtle peer2
+     let other_turtle peer2
      if other_turtle = nobody
      [stop]
 
-      if link-with other_turtle = nobody  ; create new link
+      if out-link-to other_turtle = nobody ;or (not member? peer1 list_other_peer_id)  ; create new link if a DIRECT link P1=>p2 doesn't exist
       [
       create-link-to other_turtle
       show "======================================"
-      show word " ==> new link:" link-with other_turtle
+      show word " ==> new link:" out-link-to other_turtle
       show "======================================"
          ]
 
 
-
-      ask link-with other_turtle [
+      ask out-link-to other_turtle [
         let original_feedback feedback_weight
         set feedback_weight feedback_weight + feedback
 
@@ -359,7 +380,9 @@ to setup-feedback_edges_between [peer1 peer2 feedback] ; P1 => P2
 
       ]
 
-        if  not member? peer2 list_other_peer_id[set list_other_peer_id lput other_turtle list_other_peer_id]
+        if  not member? other_turtle list_other_peer_id
+        [set list_other_peer_id lput other_turtle list_other_peer_id
+               ]
 
         ask other_turtle[
         if  not member? peer1 list_in_peer_id ;here
@@ -377,27 +400,39 @@ end
 
 to compute-local-trust [peer1 peer2]  ;local trust that peer1 has in 2
 
-  let sigma_sum 0
+  let sum_feedback 0
 
    ask peer1
   [
-    ask my-links ;the agentset containing all links
+    foreach list_other_peer_id
+    [ ?1 ->
+     ask out-link-to ?1 ;the agentset containing all links ( !!!!! ASK only outgoing links)
     [
 
-      if feedback_weight > 0 [
-      set sigma_sum sigma_sum + feedback_weight
-      ]
+    if feedback_weight > 0 [
+    set sum_feedback sum_feedback + feedback_weight
+     ]
 
     ]
-
-    ask link-with peer2 [
+    ]
+  
+    ;set sum_feedback sum [ feedback_weight > 0] of my-out-links
+    print( word "7777 sum_feedback of "  peer1 "is" sum_feedback)
+    ;if sum_feedback = 0
+    ;[set sum_feedback  1]
+    
+    ask my-out-links[
       if total_transaction_between_src_dest > 0
       [
-      ifelse feedback_weight > 0 [
       let sum_p_q feedback_weight
+      ifelse sum_p_q > 0 [
+      
       let AR_p_q   (total_transaction_between_src_dest - No_malicious_transaction_between_src_dest) / total_transaction_between_src_dest
+;!! case AR <0??,
+      print (word " AR_p_q between" peer1 "=>" peer2 "is=" AR_p_q "and sum_p_q " sum_p_q)
       set sum_p_q sum_p_q * AR_p_q
-      let LTR  precision  ((sum_p_q / sigma_sum) ) 2
+      let LTR  precision  ((sum_p_q / sum_feedback) ) 2
+      ;let LTR   ((sum_p_q / sum_feedback) ) 
       set  local_trust_ LTR
 
       ;show word "==>> local trust" local_trust_
@@ -406,6 +441,8 @@ to compute-local-trust [peer1 peer2]  ;local trust that peer1 has in 2
         [
           set label 0
         ]
+        
+       print (word "00 Local trust between" peer1 "=>" peer2 "is=" local_trust_)
       ]
     ]
   ]
@@ -436,8 +473,8 @@ ask peer
        let GT_i global_trust_value
 
 
-       if link-with peer != nobody[
-          ask link-with peer [
+       if out-link-to peer != nobody[
+          ask out-link-to peer [
           ;show  "computing GT of step3"
         let local_trust_i local_trust_
         if sum_GT_P > 0
