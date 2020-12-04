@@ -188,7 +188,7 @@ to go
   ;layout
   ask turtles [
     set total_Local_trust sum [local_trust_] of my-out-links
-    ;print( word"--9999---  total local trust of " self "in others is " round total_Local_trust)
+    print( word"--9999---  total local trust of " self "in others is " round total_Local_trust)
   ]
   tick
 end
@@ -370,6 +370,7 @@ to setup-feedback_edges_between [peer1 peer2 feedback] ; P1 => P2
 
 
       ask out-link-to other_turtle [
+ 
         let original_feedback feedback_weight
         set feedback_weight feedback_weight + feedback
 
@@ -379,6 +380,7 @@ to setup-feedback_edges_between [peer1 peer2 feedback] ; P1 => P2
           set feedback_weight feedback_weight + feedback
 
         ]
+  
 
       ]
 
@@ -398,53 +400,44 @@ to setup-feedback_edges_between [peer1 peer2 feedback] ; P1 => P2
     [
       layout-spring turtles links 0.3 (world-width / (sqrt number_of_nodes)) 1
     ]
+ 
 end
 
 to compute-local-trust [peer1 peer2]  ;local trust that peer1 has in 2
 
-  let sum_feedback 0
-
+  let sigma_tx 0 ; Sigma tx
+  let sum_p_q 0 ; Sum(P,Q)
+  let sigma_sum 0; Sigma sum
+  let S 0 ; S(P,Q)
    ask peer1
   [
-    foreach list_other_peer_id
-    [ ?1 ->
-     ask out-link-to ?1 ;the agentset containing all links ( !!!!! ASK only outgoing links)
-    [
-
-    if feedback_weight > 0 [
-    set sum_feedback sum_feedback + feedback_weight
-     ]
+    foreach  list_other_peer_id[ ?1 ->
+       
+    ask ?1[
+    ask in-link-from peer1[
+        show "hel"
+    let AR_p_q   (total_transaction_between_src_dest - No_malicious_transaction_between_src_dest) / total_transaction_between_src_dest
+    set sum_p_q feedback_weight * AR_p_q
+    set sigma_sum sigma_sum + sum_p_q
     ]
+    ]
+    ]
+    
+    
+    ask out-link-to peer2[
+              
+    let AR_p_q   (total_transaction_between_src_dest - No_malicious_transaction_between_src_dest) / total_transaction_between_src_dest
+    set sum_p_q feedback_weight * AR_p_q
      
-      ask out-link-to ?1 [
-      
-            if total_transaction_between_src_dest > 0
-      [
-      let sum_p_q feedback_weight
-      show word "sum_p_q" sum_p_q
-      ifelse sum_p_q > 0 [
-      print (word " total_transaction_between_src_dest betwzeen" peer1 "=>" peer2 "is=" total_transaction_between_src_dest "and No_malicious_transaction_between_src_dest " No_malicious_transaction_between_src_dest)
-      let AR_p_q   (total_transaction_between_src_dest - No_malicious_transaction_between_src_dest) / total_transaction_between_src_dest
-      print (word "txtotal" total_transaction_between_src_dest "nomalicious" No_malicious_transaction_between_src_dest)
-            ;!! case AR <0??,
-      print (word " AR_p_q between" peer1 "=>" peer2 "is=" AR_p_q "and sum_p_q " sum_p_q)
-      set sum_p_q sum_p_q * AR_p_q
-      let LTR  precision  ((sum_p_q / sum_feedback) ) 2
-      ;let LTR   ((sum_p_q / sum_feedback) ) 
-      set  local_trust_ LTR
-
-      ;show word "==>> local trust" local_trust_
-      set label  local_trust_
+        ifelse sigma_sum != 0
+        [set S S + (sum_p_q / sigma_sum)
+         set  local_trust_ S
         ]
         [
           set local_trust_ 0
-          set label local_trust_
+
         ]
-        
-       print (word "00 Local trust between" peer1 "=>" peer2 "is=" local_trust_)
-      ]
-      ]
-      
+        set label local_trust_
     ]
   
     ;set sum_feedback sum [ feedback_weight > 0] of my-out-links
@@ -452,9 +445,7 @@ to compute-local-trust [peer1 peer2]  ;local trust that peer1 has in 2
     ;if sum_feedback = 0
     ;[set sum_feedback  1]
     
-    ask my-out-links[
-
-    ]
+     
   ]
 end
 
