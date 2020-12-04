@@ -70,16 +70,16 @@ to setup-nodes
     set size 1.2
 
     ;;set service
-    set service random 2;no_services_available ;either it provides the service or not !!2not1
-
+    ifelse random_service
+    [set service random 2];no_services_available ;either it provides the service or not !!2not1
+    [set service 1]
     ;;initialise the initial trust values
     set global_trust_value global_initial_trust_value
     set trust_score global_initial_trust_value
 
     ;;set the label for the nodes
     set label precision global_trust_value 2 ;1.25 2 digits after .
-
-    
+   
     ;;set malicious status
     set malicious false
 
@@ -190,6 +190,7 @@ to go
     set total_Local_trust sum [local_trust_] of my-out-links
     print( word"--9999---  total local trust of " self "in others is " round total_Local_trust)
   ]
+  layout
   tick
 end
 
@@ -411,11 +412,12 @@ to compute-local-trust [peer1 peer2]  ;local trust that peer1 has in 2
   let S 0 ; S(P,Q)
    ask peer1
   [
+    print (word "list " peer1 "is" list_other_peer_id)
     foreach  list_other_peer_id[ ?1 ->
        
     ask ?1[
     ask in-link-from peer1[
-        show "hel"
+    print (word "123456 malicious tx number is " No_malicious_transaction_between_src_dest)
     let AR_p_q   (total_transaction_between_src_dest - No_malicious_transaction_between_src_dest) / total_transaction_between_src_dest
     set sum_p_q feedback_weight * AR_p_q
     set sigma_sum sigma_sum + sum_p_q
@@ -430,14 +432,31 @@ to compute-local-trust [peer1 peer2]  ;local trust that peer1 has in 2
     set sum_p_q feedback_weight * AR_p_q
      
         ifelse sigma_sum != 0
-        [set S S + (sum_p_q / sigma_sum)
-         set  local_trust_ S
+        [set S sum_p_q / sigma_sum
+        set  local_trust_ S
         ]
         [
           set local_trust_ 0
 
         ]
-        set label local_trust_
+        set label precision local_trust_ 2
+    ]
+    
+      ask my-out-links [ ;update other LT after the change of LT peer1=> peer2
+              show word "old local trust" local_trust_
+      let AR_p_q   (total_transaction_between_src_dest - No_malicious_transaction_between_src_dest) / total_transaction_between_src_dest
+      set sum_p_q feedback_weight * AR_p_q
+     
+        ifelse sigma_sum != 0
+        [set S sum_p_q / sigma_sum
+         set  local_trust_ S
+        
+        ]
+        [
+          set local_trust_ 0
+
+        ]
+        set label precision local_trust_ 2
     ]
   
     ;set sum_feedback sum [ feedback_weight > 0] of my-out-links
@@ -553,7 +572,7 @@ to update_trust
   set new_GT sum [global_trust_value] of turtles ;
   print ( word "the convergence old_GT" old_GT "and new GT" new_GT)
 
-;  show "-------------------------------------";
+
     ]
   show "====================Successfull convergence==============================="
 end
