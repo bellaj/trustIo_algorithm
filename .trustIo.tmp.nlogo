@@ -180,7 +180,7 @@ to go
   show "---------------------------------"
   transact
 
-  let tick_checkpoint round (current_ticks / 100)
+  let tick_checkpoint round (current_ticks / update_trust_interval)
 
   if update_trust_or_not and (tick_checkpoint = trust_checkpoint + 1) [   ;update the trust in the network after 500 tick
   update_trust2
@@ -188,10 +188,10 @@ to go
 
   ]
   ;layout
-  ;ask turtles [
-  ; set total_Local_trust sum [local_trust_] of my-out-links
-  ;print( word"--9999---  total local trust of " self "in others is " round total_Local_trust)
-  ;]
+  ask turtles [
+   set total_Local_trust sum [local_trust_] of my-out-links
+  print( word"--9999---  total local trust of " self "in others is " round total_Local_trust)
+  ]
   layout
   tick
 end
@@ -315,7 +315,7 @@ to perform-transaction-and-rate [peer1 peer2]   ; Transaction is from peer2 to p
 
  if not [malicious] of peer2 ;;this peer is malicious ;; IMO malicious peers can act or not maliciously
     [
-      if random 101 < malicious_transactions_percentage ; % defined by interface and < 100  "if random 101 < 100"
+      if random 100 < malicious_transactions_percentage ; % defined by interface and < 100  "if random 101 < 100"
         ;[    set peer2_act_maliciously false      ] ;[0-100]<0=> never ; [0-100]<100=> always
       [    set peer2_act_maliciously true     ]
     ]
@@ -428,7 +428,7 @@ to compute-local-trust [peer1 peer2]  ;local trust that peer1 has in 2
     ask my-out-links[
     print (word "123456 malicious tx number is " No_malicious_transaction_between_src_dest)
     let AR_p_q   (total_transaction_between_src_dest - No_malicious_transaction_between_src_dest) / total_transaction_between_src_dest
-    set sum_p_q feedback_weight * AR_p_q
+    if feedback_weight > 0 [set sum_p_q feedback_weight * AR_p_q]
     set sigma_sum sigma_sum + sum_p_q
     ]
 
@@ -436,33 +436,31 @@ to compute-local-trust [peer1 peer2]  ;local trust that peer1 has in 2
     ask out-link-to peer2[
 
     let AR_p_q   (total_transaction_between_src_dest - No_malicious_transaction_between_src_dest) / total_transaction_between_src_dest
-    set sum_p_q feedback_weight * AR_p_q
+    ifelse feedback_weight > 0 [
+        set sum_p_q feedback_weight * AR_p_q
+      ]
+      [
+          set sum_p_q 0
 
-        ifelse sigma_sum != 0
-        [set S sum_p_q / sigma_sum
-        set  local_trust_ S
-        ]
-        [
-          set local_trust_ 0
+      ]
 
-        ]
+        ifelse sigma_sum != 0  
+      [ifelse sum_p_q > 0       [set S sum_p_q / sigma_sum        set  local_trust_ S     ][set  local_trust_ 0]
+      ]        [        set  local_trust_ 0]
+      
+   
         set label precision local_trust_ 2
     ]
 
       ask my-out-links [ ;update other LT after the change of LT peer1=> peer2
       show word "old local trust" local_trust_
       let AR_p_q   (total_transaction_between_src_dest - No_malicious_transaction_between_src_dest) / total_transaction_between_src_dest
-      set sum_p_q feedback_weight * AR_p_q
+      ifelse feedback_weight > 0 [set sum_p_q feedback_weight * AR_p_q][set sum_p_q  0]
 
-        ifelse sigma_sum != 0
-        [set S sum_p_q / sigma_sum
-         set  local_trust_ S
-
-        ]
-        [
-          set local_trust_ 0
-
-        ]
+       ifelse sigma_sum != 0  
+      [ifelse sum_p_q > 0       [set S sum_p_q / sigma_sum        set  local_trust_ S     ][set  local_trust_ 0]
+      ]        [        set  local_trust_ 0]
+      
         set label precision local_trust_ 2
     ]
 
