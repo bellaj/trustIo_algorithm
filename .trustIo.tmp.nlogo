@@ -476,6 +476,59 @@ to compute-local-trust [peer1 peer2]  ;local trust that peer1 has in 2
   ]
 end
 
+
+
+to compute-local-trust2 [peer1 peer2]  ;local trust that peer1 has in 2
+
+  let sigma_tx 0 ; Sigma tx
+  let sum_p_q 0 ; Sum(P,Q)
+  let sigma_sum 0; Sigma sum
+  let S 0 ; S(P,Q)
+   ask peer1
+  [
+    ;print (word "list " peer1 "is" list_other_peer_id)
+
+    ask my-out-links[
+    print (word "123456 malicious tx number is " No_malicious_transaction_between_src_dest)
+    let AR_p_q   (total_transaction_between_src_dest - No_malicious_transaction_between_src_dest) / total_transaction_between_src_dest
+    if feedback_weight > 0 [set sum_p_q feedback_weight * AR_p_q]
+    set sigma_sum sigma_sum + sum_p_q
+    ]
+
+
+    ask out-link-to peer2[
+
+    let AR_p_q   (total_transaction_between_src_dest - No_malicious_transaction_between_src_dest) / total_transaction_between_src_dest
+    ifelse feedback_weight > 0 [
+        set sum_p_q feedback_weight * AR_p_q
+      ]
+      [
+          set sum_p_q 0
+
+      ]
+
+        ifelse sigma_sum != 0
+      [ifelse sum_p_q > 0       [set S sum_p_q / sigma_sum        set  local_trust_ S     ][set  local_trust_ 0]
+      ]        [        set  local_trust_ 0]
+
+
+        set label precision local_trust_ 2
+    ]
+
+      ask my-out-links [ ;update other LT after the change of LT peer1=> peer2
+      show word "old local trust" local_trust_
+      let AR_p_q   (total_transaction_between_src_dest - No_malicious_transaction_between_src_dest) / total_transaction_between_src_dest
+      ifelse feedback_weight > 0 [set sum_p_q feedback_weight * AR_p_q][set sum_p_q  0]
+
+       ifelse sigma_sum != 0
+      [ifelse sum_p_q > 0       [set S sum_p_q / sigma_sum        set  local_trust_ S     ][set  local_trust_ 0]
+      ]        [        set  local_trust_ 0]
+
+        set label precision local_trust_ 2
+    ]
+
+  ]
+end
 ;-------------------------------
 ;Global trust computation
 ;--------------------------------
@@ -498,7 +551,7 @@ ask peer
        let GT_i global_trust_value
 
         ask out-link-to peer [
-         let local_trust_i local_trust_
+        let local_trust_i local_trust_
         if sum_GT_P > 0
         [
         let GT_P_i (local_trust_i * GT_i) / (sum_GT_P)
@@ -510,11 +563,12 @@ ask peer
       ]
 
 
-    if length GTs > 0 and (sum GTs > 0)
-    [set GT_P sum GTs
-     set GT_P GT_P + global_initial_trust_value
+    if length GTs > 0  
+    [
+      set GT_P sum GTs
+     ;set GT_P GT_P + global_initial_trust_value
     ]
-    if GT_P > 1
+    if GT_P > 1 ; sanity check
     [ print (word "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" GT_P "of" self) ]
       print (word "====> new GT of" peer "is " GT_P)
 
@@ -525,6 +579,57 @@ ask peer
 
 
 end
+
+to compute-global-trust3 [peer]
+
+let total_trust 0.0
+show word "computing GT of " peer
+ask peer
+[
+    let GT_P global_trust_value
+    let GT_P' 0
+ ; ask my-links ;the agentset containing all links
+    let GTs []
+    let sum_GT_P sum_global_trust  peer ;sum of GT of peers pointing to current peer
+   print (word "====> pointing peers to " peer "are" list_in_peer_id "links  by asking"  in-link-neighbors )
+
+   ask in-link-neighbors [
+
+       ; set the GT of current peer
+       let GT_i global_trust_value
+
+        ask out-link-to peer [
+        let local_trust_i local_trust_
+        if local_trust_i = 0 and feedback_weight < 0 [set local_trust_i (feedback_weight * ( No_malicious_transaction_between_src_dest) / total_transaction_between_src_dest)
+      show word "++-++" local_trust_i  ]
+        if sum_GT_P > 0
+        [
+        let GT_P_i (local_trust_i * GT_i) / (sum_GT_P)
+        set GTs lput GT_P_i GTs
+          show word "++-++ gts" GTs 
+          ]
+        ]
+
+
+      ]
+
+
+    if length GTs > 0 ;and (sum GTs > 0)
+    [set GT_P sum GTs
+     set GT_P GT_P + global_initial_trust_value
+    ]
+    if GT_P > 1
+    [ print (word "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" GT_P "of" self) ]
+      print (word "====> new GT of" peer "is " GT_P)
+
+    set global_trust_value  GT_P
+    if global_trust_value < 0 [set global_trust_value 0]
+    set label precision global_trust_value 2
+]
+
+
+end
+
 
 to-report sum_global_trust[ peer]
   let temp_sum 888
@@ -625,6 +730,8 @@ print (word "old_GT " self  " " old_GT "global_trust_value is " global_trust_val
 
 end
 
+
+ 
 
 to-report convergence [GT GT']
 let converge false
