@@ -205,14 +205,14 @@ end
 ; Functions
 ;-------------------------------------
 
- 
+
 to transact
 ; peer1 will request a service from another peer
   let peer1 nobody
   if dangling_nodes[
-  set peer1 one-of turtles with [ count my-in-links = 0 and count my-out-links = 0]  
+  set peer1 one-of turtles with [ count my-in-links = 0 and count my-out-links = 0]
   ]
-  if peer1 = nobody [show "no more dangling nodes" set peer1 one-of turtles] 
+  if peer1 = nobody [show "no more dangling nodes" set peer1 one-of turtles]
   if evaluate-connections [ ;=> this might disturb the calcul if the GT is not alreaady calculated as it will remove links between peers
    evaluate-current-connections peer1
     ]
@@ -519,6 +519,7 @@ ask peer
       print (word "====> new GT of" peer "is " GT_P)
 
     set global_trust_value  GT_P
+    if total_trust < 0 [set total_trust 0]
     set label precision global_trust_value 2
 ]
 
@@ -658,7 +659,7 @@ to trust-computation-error [computation_type]
 
   ifelse computation_type = 0
   [
-    set error_rate sum ([square global_trust_value] of turtles)
+    set error_rate sum ([ global_trust_value * global_trust_value] of turtles)
   ]
   [
     ask turtles
@@ -667,7 +668,7 @@ to trust-computation-error [computation_type]
       [
         set error_rate error_rate + (1 - (malicious_transactions / 100))
       ]
-      [
+      [ ;not malicious
         set error_rate error_rate + 1
       ]
     ]
