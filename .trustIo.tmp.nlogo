@@ -45,6 +45,9 @@ turtles-own [
   trust_score; T(P)
   total_Local_trust
   old_GT
+
+  user_behaviour
+  device_security
 ]
 
 
@@ -89,6 +92,8 @@ to setup-nodes
     ;setxy (random-xcor * 0.95) (random-ycor * 0.95)
 
     initialize-turtle-lists self; initialize turtles lists and vars
+    set device_security (random 100 )/ 100
+    set user_behavior  (random 100 )/ 100
   ]
 
 
@@ -199,11 +204,15 @@ end
 ;--------------------------------------
 ; Functions
 ;-------------------------------------
+
+ 
 to transact
-
-  let peer1 one-of turtles   ; will request a service from another peer
-
-
+; peer1 will request a service from another peer
+  let peer1 nobody
+  if dangling_nodes[
+  set peer1 one-of turtles with [ count my-in-links = 0 and count my-out-links = 0]  
+  ]
+  if peer1 = nobody [show "no more dangling nodes" set peer1 one-of turtles] 
   if evaluate-connections [ ;=> this might disturb the calcul if the GT is not alreaady calculated as it will remove links between peers
    evaluate-current-connections peer1
     ]
@@ -444,11 +453,11 @@ to compute-local-trust [peer1 peer2]  ;local trust that peer1 has in 2
 
       ]
 
-        ifelse sigma_sum != 0  
+        ifelse sigma_sum != 0
       [ifelse sum_p_q > 0       [set S sum_p_q / sigma_sum        set  local_trust_ S     ][set  local_trust_ 0]
       ]        [        set  local_trust_ 0]
-      
-   
+
+
         set label precision local_trust_ 2
     ]
 
@@ -457,10 +466,10 @@ to compute-local-trust [peer1 peer2]  ;local trust that peer1 has in 2
       let AR_p_q   (total_transaction_between_src_dest - No_malicious_transaction_between_src_dest) / total_transaction_between_src_dest
       ifelse feedback_weight > 0 [set sum_p_q feedback_weight * AR_p_q][set sum_p_q  0]
 
-       ifelse sigma_sum != 0  
+       ifelse sigma_sum != 0
       [ifelse sum_p_q > 0       [set S sum_p_q / sigma_sum        set  local_trust_ S     ][set  local_trust_ 0]
       ]        [        set  local_trust_ 0]
-      
+
         set label precision local_trust_ 2
     ]
 
@@ -505,7 +514,7 @@ ask peer
     [set GT_P sum GTs
      set GT_P GT_P + global_initial_trust_value
     ]
-if GT_P > 1
+    if GT_P > 1
     [ print (word "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" GT_P "of" self) ]
       print (word "====> new GT of" peer "is " GT_P)
 
@@ -608,8 +617,11 @@ print (word "old_GT " self  " " old_GT "global_trust_value is " global_trust_val
 
 
     ]
+   set  trust_score alpha * global_trust_value * user_behaviour + beta * device_security
 ]
   show "====================Successfull convergence==============================="
+
+
 end
 
 
