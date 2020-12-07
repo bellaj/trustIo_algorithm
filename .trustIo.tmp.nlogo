@@ -209,10 +209,13 @@ end
 to transact
 ; peer1 will request a service from another peer
   let peer1 nobody
-  if dangling_nodes[
+  ifelse remove_dangling_nodes[
   set peer1 one-of turtles with [ count my-in-links = 0 and count my-out-links = 0]
-  ]
-  if peer1 = nobody [show "no more dangling nodes" set peer1 one-of turtles]
+    if peer1 = nobody [show "no more dangling nodes" set peer1 one-of turtles]
+    ]
+
+  [set peer1 one-of turtles]
+
   if evaluate-connections [ ;=> this might disturb the calcul if the GT is not alreaady calculated as it will remove links between peers
    evaluate-current-connections peer1
     ]
@@ -281,8 +284,8 @@ to-report find-potential_peers-to-connect-with [required-service peerid] ; requi
       set potential_peers out-link-neighbors
   ]]
 
-
-  let no_peers_to_return  number_of_peers - 1
+show word "the list of potential peeers is " potential_peers
+  let no_peers_to_return  round number_of_peers / 3
   let sorted_list 0
   ;;return number of peers
   ifelse count potential_peers >= no_peers_to_return ;;list is small than number that needs to be returned
@@ -563,7 +566,7 @@ ask peer
       ]
 
 
-    if length GTs > 0  
+    if length GTs > 0
     [
       set GT_P sum GTs
      ;set GT_P GT_P + global_initial_trust_value
@@ -606,7 +609,7 @@ ask peer
         [
         let GT_P_i (local_trust_i * GT_i) / (sum_GT_P)
         set GTs lput GT_P_i GTs
-          show word "++-++ gts" GTs 
+          show word "++-++ gts" GTs
           ]
         ]
 
@@ -731,7 +734,7 @@ print (word "old_GT " self  " " old_GT "global_trust_value is " global_trust_val
 end
 
 
- 
+
 
 to-report convergence [GT GT']
 let converge false
