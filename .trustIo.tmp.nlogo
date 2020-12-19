@@ -96,8 +96,9 @@ to setup-nodes
     set device_security round (100 - secrurity% )/ 100
     let y random-float 1
     set user_behaviour  round (100 - user_behaviour% )/ 100
-    
-    
+
+    set  trust_score alpha * global_trust_value * user_behaviour + beta * device_security
+
   ]
 
 
@@ -189,19 +190,37 @@ to go
   show "---------------------------------"
   ifelse all_peers_transact [
     let sample random number_of_peers
-    show word "ask random sample of " sample
-    ask n-of number_of_peers turtles [transact2 self]
-  ]
-  [    transact ] ; one peer transacts per tick
+    let peers_neighbours nobody
 
-  let tick_checkpoint current_ticks mod update_trust_interval  
-  
-  if update_trust_or_not and (tick_checkpoint = 0) [   ;update the trust in the network after 500 tick
+    ifelse remove_dangling_nodes[
+      set peers_neighbours up-to-n-of number_of_peers turtles with [ count my-in-links = 0 and count my-out-links = 0]
+      print( word "selected dangling neighbours " peers_neighbours count peers_neighbours )
+      if count peers_neighbours = 0 [
+        set peers_neighbours n-of sample turtles
+        print( word "selected neighbours after no dangling " peers_neighbours count peers_neighbours )
+        ]
+    ]
+    [
+      if peers_neighbours = nobody [
+        set peers_neighbours n-of sample turtles
+      ]
+    ]
+    ask peers_neighbours [
+      all_transact self
+     ]
+
+  ]
+  [ ont_to_one_transact ] ; one peer transacts per tick
+
+  let tick_checkpoint current_ticks mod update_trust_interval
+
+ ; if update_trust_or_not and (tick_checkpoint = 0) [   ;update the trust in the network after update_trust_interval tick
   show word "------------------tick_checkpoint---------------" tick_checkpoint
-  update_trust2
+  ;update_trust_with_total_trust
+  update_trust_with_global_trust
   set trust_checkpoint tick_checkpoint
 
-  ]
+  ;]
   ;if current_ticks > 50  [clear-output]
   ;layout
   ;ask turtles [
@@ -216,7 +235,7 @@ end
 ; Functions
 ;-------------------------------------
 
-to transact2 [peer1]
+to all_transact [peer1]
 ; peer1 will request a service from another peer
 
 
@@ -226,17 +245,16 @@ to transact2 [peer1]
 
 
    let potential_partners_list find-potential_peers-to-connect-with 1 [who] of peer1  ;nodes providing the service
+  ;<========== Already sorted by trust_score
+  ;set sorted_list sort-on [(- trust_score)] potential_peers
+  ;let potential_partners_sorted_pertinence sort-on [(- trust_score )] potential_partners_list
 
-   print (word "==> potential_partners_list of" peer1 " are " potential_partners_list )
+  print (word "==> potential_partners_list of" peer1 " are " potential_partners_list )
 
     ;;check if there are items in the list
     let peer2 0 ; will host the other peer who provides the service
 
-    ifelse length potential_partners_list < 1
-    [
-      stop ;;exit the procedure
-    ]
-    [
+   ;set sorted_list sort-on [(- trust_score)] potential_peers
       ;;select a random peer
     ifelse choose_random_or_most_trusted ; if true => random if not =>most trusted
     [
@@ -252,7 +270,7 @@ to transact2 [peer1]
         stop ;;exit the procedure
         show " ERROR!!!!!! exiting for equality reason"
       ]
-    ]
+
 
     ;;perform the transaction between two peers
     perform-transaction-and-rate peer1 peer2    ;peer2 send tx to peer1 and get feedback freom it
@@ -261,7 +279,7 @@ to transact2 [peer1]
 end
 
 
-to transact
+to ont_to_one_transact
 ; peer1 will request a service from another peer
   let peer1 nobody
   ifelse remove_dangling_nodes[
@@ -346,7 +364,7 @@ end
 ;;returns a list of the top [no_peers_to_return] peers
 to-report find-potential_peers-to-connect-with [required-service peerid] ; required-service is a parameter, the number of possible services is defined in the interface ==> here the random walk should be performed
 
-  let potential_peers other turtles with [service = required-service and who != peerid and (count my-in-links < max_in_links) and global_trust_value > trust_threshold] ; select new neighbours with specific conditions
+  let potential_peers other turtles with [service = required-service and who != peerid and (count my-in-links <= max_in_links) and trust_score >= trust_threshold] ; select new neighbours with specific conditions
 ;print( word "the list of potential peeers with specific values  service" required-service "for the peer" peerid  )
   if  count potential_peers = 0 [ ; use this cached list if no new nodes are available
     ask turtle peerid [
@@ -360,11 +378,13 @@ to-report find-potential_peers-to-connect-with [required-service peerid] ; requi
   ifelse count potential_peers >= no_peers_to_return ;;list is small than number that needs to be returned
   [
     ;;sort the list and return only the first [no_peers_to_return]
-    set sorted_list sublist ( sort-on [( - global_trust_value)] potential_peers ) 0 no_peers_to_return
+    ;set sorted_list sublist ( sort-on [( - global_trust_value)] potential_peers ) 0 no_peers_to_return
+    set sorted_list sublist ( sort-on [( - trust_score)] potential_peers ) 0 no_peers_to_return
   ]
   [
     ;;sort the entire list
-    set sorted_list sort-on [(- global_trust_value)] potential_peers
+   ; set sorted_list sort-on [(- global_trust_value)] potential_peers
+    set sorted_list sort-on [(- trust_score)] potential_peers
   ]
 print( word "the list sorted_list is " sorted_list)
   report sorted_list
@@ -650,7 +670,7 @@ end
 ;--------------------------------
 to compute-global-trust [peer]
 
-let total_trust 0.0
+;let total_trust 0.0
 show word "computing GT of " peer
 ask peer
 [
@@ -659,7 +679,7 @@ ask peer
  ; ask my-links ;the agentset containing all links
     let GTs []
     let sum_GT_P sum_global_trust  peer ;sum of GT of peers pointing to current peer
-   print (word "====> pointing peers to " peer "are" list_in_peer_id "links  by asking"  in-link-neighbors )
+    print (word "====> pointing peers to " peer "are" list_in_peer_id "links  by asking"  in-link-neighbors "for sum" sum_GT_P )
 
    ask in-link-neighbors [
 
@@ -668,69 +688,96 @@ ask peer
 
         ask out-link-to peer [
         let local_trust_i local_trust_
+        let v compute_logistic other-end
         if sum_GT_P > 0
         [
-        let GT_P_i (local_trust_i * GT_i) / (sum_GT_P)
+          let GT_P_i (local_trust_i * GT_i * v ) / (sum_GT_P)
         set GTs lput GT_P_i GTs
           ]
         ]
 
-
       ]
 
-
-    if length GTs > 0
+    ifelse length GTs > 0
     [
-      set GT_P sum GTs
-     ;set GT_P GT_P + global_initial_trust_value
+      set GT_P  sum GTs
+      ;set GT_P global_initial_trust_value + sum GTs
+
     ]
+    [set GT_P global_trust_value];if no in neighbors keep global_trust_value
+
     if GT_P > 1 ; sanity check
     [ print (word "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" GT_P "of" self) ]
-      print (word "====> new GT of" peer "is " GT_P)
 
-    set global_trust_value  GT_P
-    if total_trust < 0 [set total_trust 0]
-    set label precision global_trust_value 3
+    print (word "====> new GT of" peer "is " GT_P)
+
+    ;ifelse default_or_cumul [set global_trust_value  global_initial_trust_value + GT_P]
+    ;[
+      set global_trust_value   GT_P
+    ;]
+
+    set label precision global_trust_value  3
 ]
 
 
 end
- 
-to-report sum_global_trust[ peer]
-  let temp_sum 888
+
+to-report compute_logistic [peer]
+   let val 0
   ask peer[
-    set temp_sum global_trust_value
+  set  val 1 / ( 1 + exp(- peer_total_transactions))
+  ]
+  report val
+end
+
+to-report sum_global_trust[ peer]
+  let temp_sum 0
+  ask peer[
+
  ;set old_GT sum [global_trust_value] of turtles ;
-ask in-link-neighbors [
+    ask in-link-neighbors [
      set temp_sum temp_sum + global_trust_value
 
     ]
-
-
   ]
-report temp_sum
 
+report temp_sum
+end
+
+
+
+to-report globabl_trust_sum_all_peers ;used in output
+
+let globabl_trust_sum_all_peers_ 0
+let tick_checkpoint current_ticks mod update_trust_interval
+
+if update_trust_or_not and (tick_checkpoint > 0)
+[
+set globabl_trust_sum_all_peers_ sum [global_trust_value] of turtles
+]
+report globabl_trust_sum_all_peers_
 end
 
 ;-------------------------------
 ;Global trust computation with trust score
 ;--------------------------------
 to compute-global-trust_score [peer]
-let total_trust 0.0
+
 show word "computing GT of " peer
 ask peer
 [
-    let GT_P global_trust_value
+    let GT_P global_trust_value ;initialization
     let GT_P' 0
- ; ask my-links ;the agentset containing all links
+
     let GTs []
     let sum_GT_P sum_trust_score  peer ;sum of GT of peers pointing to current peer
+
    print (word "====> pointing peers to " peer "are" list_in_peer_id "links  by asking"  in-link-neighbors )
 
    ask in-link-neighbors [
 
        ; set the GT of current peer
-       let GT_i trust_score
+        let GT_i trust_score
 
         ask out-link-to peer [
         let local_trust_i local_trust_
@@ -741,7 +788,6 @@ ask peer
           ]
         ]
 
-
       ]
 
 
@@ -754,8 +800,11 @@ ask peer
     [ print (word "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" GT_P "of" self) ]
       print (word "====> new GT of" peer "is " GT_P)
 
-    set global_trust_value  GT_P
-    if total_trust < 0 [set total_trust 0]
+    ;ifelse default_or_cumul [set global_trust_value  global_initial_trust_value + GT_P]
+    ;[
+      set global_trust_value  GT_P
+    ;]
+   ; if total_trust < 0 [set total_trust 0]
     set label precision global_trust_value 3
 ]
 
@@ -764,10 +813,12 @@ end
 to-report sum_trust_score[ peer]
   let temp_sum 888
   ask peer[
-    set temp_sum trust_score
+    set temp_sum 0;trust_score
  ;set old_GT sum [global_trust_value] of turtles ;
-ask in-link-neighbors [
-     set temp_sum temp_sum + trust_score
+    ask in-link-neighbors [
+
+      set temp_sum temp_sum + trust_score
+
 
     ]
 
@@ -777,13 +828,13 @@ report temp_sum
 
 end
 
-to update_trust
+to update_trust_with_total_trust
   show "=============================================== updating trust"
 
-  let old_sum_GT sum [global_trust_value] of turtles ;
-  let new_GT old_sum_GT
 
-  set old_sum_GT sum [global_trust_value] of turtles ;
+  let new_GT sum [global_trust_value] of turtles ;
+
+  let old_sum_GT sum [global_trust_value] of turtles ;
 
     ask turtles [ ; ask all peers
     ;set old_GT lput global_trust_value old_GT
@@ -814,7 +865,8 @@ to update_trust
 end
 
 
-to update_trust2
+
+to update_trust_with_global_trust
   show "=============================================== updating trust"
 
   ;let old_GT sum [global_trust_value] of turtles ;
@@ -843,17 +895,14 @@ to update_trust2
   ;ask turtles [ ; ask all peers
     compute-global-trust self
 
-print (word "old_GT " self  " " old_GT "global_trust_value is " global_trust_value)
-
-  ;]
+  print (word "old_GT " self  " " old_GT "global_trust_value is " global_trust_value)
 
   ;set new_GT sum [global_trust_value] of turtles ;
   print ( word "the convergence old_GT" old_GT "and conv is " convergence old_GT global_trust_value)
 
-
     ]
    set  trust_score alpha * global_trust_value * user_behaviour + beta * device_security
-    show word "trust_score" trust_score
+   show word "trust_score" trust_score
 ]
   show "====================Successfull convergence==============================="
 
