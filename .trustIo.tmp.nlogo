@@ -25,9 +25,11 @@ s_rate; success rate
 ;link parameters
 links-own [
   feedback_weight ; total sum of feedbacks between 2 peers
+  correct_feedback_weight; total of real feedbacks
   No_malicious_transaction_between_src_dest
   total_transaction_between_src_dest
   local_trust_ ; Normalized local trust between 2 peers
+  correct_local_trust_; used to  RMS
 
 ]
 ;;peer's parameters
@@ -42,10 +44,12 @@ turtles-own [
   list_in_peer_id ; a list of peers that rated the current peer
 
   global_trust_value; GT(P)
+
+  correct_global_trust_value; GT' used in RMS error computation
   trust_score; T(P)
   total_Local_trust
   old_GT
-
+  old__correct_GT
   user_behaviour
   device_security
 ]
@@ -80,6 +84,7 @@ to setup-nodes
     [set service 1]
     ;;initialise the initial trust values
     set global_trust_value global_initial_trust_value
+    set correct_global_trust_value global_initial_trust_value
     ;set trust_score global_initial_trust_value
 
     ;;set the label for the nodes
@@ -107,7 +112,7 @@ end
 
 to setup-malicious-nodes
     ;;set malicious peers according to percentage
-  let n_malicious round ((number_of_nodes * number_of_malicious_nodes) / 100) ; malicious_peers % defined in the interface
+  let n_malicious round ((number_of_nodes * prctge_of_malicious_nodes) / 100) ; malicious_peers % defined in the interface
 
   let malicious_peers_set n-of n_malicious turtles
   ask malicious_peers_set
@@ -154,10 +159,10 @@ to setup-edges
     ]
   ]
     ; make the network look a little prettier
-    repeat 10
-    [
-      layout-spring turtles links 0.3 (world-width / (sqrt number_of_nodes)) 1
-    ]
+   ; repeat 10
+    ;[
+     ; layout-spring turtles links 0.3 (world-width / (sqrt number_of_nodes)) 1
+    ;]
 end
 
 
@@ -189,7 +194,14 @@ to go
   show word "the current tick " current_ticks
   show "---------------------------------"
   ifelse all_peers_transact [
-    let sample random number_of_peers
+    let sample 0
+    ifelse all_or_sample[
+    set sample number_of_peers
+    ]
+    [
+     set sample random number_of_peers
+    ]
+
     let peers_neighbours nobody
 
     ifelse remove_dangling_nodes[
@@ -205,20 +217,22 @@ to go
         set peers_neighbours n-of sample turtles
       ]
     ]
-    ask peers_neighbours [
+    ask peers_neighbours  [
       all_transact self
      ]
 
   ]
   [ ont_to_one_transact ] ; one peer transacts per tick
 
-  let tick_checkpoint current_ticks mod update_trust_interval
+  ;let tick_checkpoint current_ticks mod update_trust_interval
 
  ; if update_trust_or_not and (tick_checkpoint = 0) [   ;update the trust in the network after update_trust_interval tick
-  show word "------------------tick_checkpoint---------------" tick_checkpoint
+  ;show word "------------------tick_checkpoint---------------" tick_checkpoint
   ;update_trust_with_total_trust
   update_trust_with_global_trust
-  set trust_checkpoint tick_checkpoint
+  update_trust_with_correct_global_trust
+
+ ; set trust_checkpoint tick_checkpoint
 
   ;]
   ;if current_ticks > 50  [clear-output]
@@ -227,7 +241,7 @@ to go
   ;set total_Local_trust sum [local_trust_] of my-out-links
   ;print( word"--9999---  total local trust of " self "in others is " round total_Local_trust)
  ; ]
-  layout
+  layout2
   tick
 end
 
@@ -364,8 +378,15 @@ end
 ;;returns a list of the top [no_peers_to_return] peers
 to-report find-potential_peers-to-connect-with [required-service peerid] ; required-service is a parameter, the number of possible services is defined in the interface ==> here the random walk should be performed
 
-  let potential_peers other turtles with [service = required-service and who != peerid and (count my-in-links <= max_in_links) and trust_score >= trust_threshold] ; select new neighbours with specific conditions
-;print( word "the list of potential peeers with specific values  service" required-service "for the peer" peerid  )
+  let potential_peers []
+  ifelse malicious_gives_only_feedback
+  [
+    set potential_peers other turtles with [service = required-service and who != peerid and (count my-in-links <= max_in_links) and trust_score >= trust_threshold and malicious = false ] ; select new neighbours with specific conditions
+  ]
+  [
+    set potential_peers other turtles with [service = required-service and who != peerid and (count my-in-links <= max_in_links) and trust_score >= trust_threshold   ] ; select new neighbours with specific conditions
+  ]
+    ;print( word "the list of potential peeers with specific values  service" required-service "for the peer" peerid  )
   if  count potential_peers = 0 [ ; use this cached list if no new nodes are available
     ask turtle peerid [
       set potential_peers out-link-neighbors
@@ -389,6 +410,10 @@ to-report find-potential_peers-to-connect-with [required-service peerid] ; requi
 print( word "the list sorted_list is " sorted_list)
   report sorted_list
 end
+
+
+
+
 
 ;;this method performs the transaction part of a collaboration
 to perform-transaction-and-rate [peer1 peer2]   ; Transaction is from peer2 to peer1
@@ -421,7 +446,6 @@ to perform-transaction-and-rate [peer1 peer2]   ; Transaction is from peer2 to p
       [    set peer2_act_maliciously true     ]
     ]
 
-  ;show word "=> peer2 will act (false) in case 0% set " peer2_act_maliciously
 
   ;;perform actions via peer1
   ask turtle peer1_id
@@ -430,59 +454,72 @@ to perform-transaction-and-rate [peer1 peer2]   ; Transaction is from peer2 to p
    ;;update origional peer (peer1) feedback history based on the feedback from peer2
 
   ;  ifelse malicious_feedback_percentage =0 [ ;peer
-  ifelse peer2_act_maliciously     [
 
-      ifelse not [malicious] of peer1 [ ;peer1 not malicious
-        setup-feedback_edges_between peer1 peer2 -1
+      ifelse peer2_act_maliciously     [ ;peer 2 is malicious
+
+      ifelse not [malicious] of peer1 [ ;peer1 not malicious => peer2 malicious
+        setup-feedback_edges_between peer1 peer2 -1 -1
         set malicious_transactions malicious_transactions + 1
+        print( word "the given feedback setup-feedback_edges_between peer1 peer2 -1 -1")
       ]
-      [
-        ; Peer1  is malicious
-        ifelse random 100 < malicious_feedback_percentage [
-        setup-feedback_edges_between peer1 peer2 1
-        set successful_transactions successful_transactions + 1
-        ]
-        [
-        setup-feedback_edges_between peer1 peer2 -1
+      [ ;peer1 is malicious
+
+        ;ifelse random 100 < malicious_feedback_percentage [ ;peer1  malicious => peer2  malicious
+        ;setup-feedback_edges_between peer1 peer2 1 -1
+        ;set successful_transactions successful_transactions + 1
+         ; print( word "the given feedback setup-feedback_edges_between peer1 peer2 1 -1")
+        ;]
+        ;[ ;peer1 malicious => peer2  malicious
+        setup-feedback_edges_between peer1 peer2 1 -1
         set malicious_transactions malicious_transactions + 1
-        ]
+          print( word "the given f   setup-feedback_edges_between peer1 peer2 1 -1")
+        ;]
 
       ]
 
     ]
     [ ;peer 2 is honnest
 
-        ifelse not [malicious] of peer1 [ ;peer1 not malicious
-        setup-feedback_edges_between peer1 peer2 1
+        ifelse not [malicious] of peer1 [ ;peer1 not malicious peer 2 is honnest
+        setup-feedback_edges_between peer1 peer2 1 1
         set successful_transactions successful_transactions + 1
+        print (word "x setup-feedback_edges_between peer1 peer2 1 1")
       ]
-      [
+      [;peer1 malicious feedback inversed
         ;peer1 malicious
-         ifelse random 100 < malicious_feedback_percentage [
-        setup-feedback_edges_between peer1 peer2 -1
-        set malicious_transactions malicious_transactions + 1
-        ]
-        [setup-feedback_edges_between peer1 peer2 1
-        set successful_transactions successful_transactions + 1]
-      ]
+         ;ifelse random 100 < malicious_feedback_percentage [  ;peer1 malicious peer 2 is honnest
+        ;setup-feedback_edges_between peer1 peer2 -1 1
+        ;set malicious_transactions malicious_transactions + 1
+         ; print (word "setup-feedback_edges_between peer1 peer2 -1 1")
+        ;]
+        ;[;peer1 not malicious peer 2 is honnest
+          setup-feedback_edges_between peer1 peer2 -1 1
+        set successful_transactions successful_transactions + 1
+      ;]
+        print (word " setup-feedback_edges_between peer1 peer2 -1 1")
+      ;]
 
     ]
-
+    ]
 
 
      ask out-link-to peer2 [
        if peer2_act_maliciously
       [
-        print( word "acts maliciously" peer2)
+          if not [malicious] of peer1
+        [
+        ;print( word "acts maliciously" peer2)
         set No_malicious_transaction_between_src_dest No_malicious_transaction_between_src_dest + 1 ; one more malicious tx
-        print (word "No_malicious_transaction_between_src_dest in incremented and new value is " No_malicious_transaction_between_src_dest)
+        print (word "No_malicious_transaction_between_src_dest in incremented even (peer1 not malicious) and new value is " No_malicious_transaction_between_src_dest)
+        ]
+
       ]
       set total_transaction_between_src_dest total_transaction_between_src_dest + 1
 
     ]
 
     compute-local-trust peer1 peer2
-
+    compute-correct-local-trust peer1 peer2
 
 set peer_total_transactions peer_total_transactions + 1
 
@@ -494,7 +531,7 @@ end
 
 
 
-to setup-feedback_edges_between [peer1 peer2 feedback] ; P1 => P2
+to setup-feedback_edges_between [peer1 peer2 feedback correctfeedback] ; P1 => P2
 
 
     ask peer1
@@ -517,15 +554,26 @@ to setup-feedback_edges_between [peer1 peer2 feedback] ; P1 => P2
       ask out-link-to other_turtle [
 
         let original_feedback feedback_weight
+      let original_correct_feedback_weight correct_feedback_weight
         set feedback_weight feedback_weight + feedback
+
+      ;------------------for RMS -------------------------------
+        set correct_feedback_weight correct_feedback_weight + correctfeedback
+      ;------------------for RMS -------------------------------
 
           if feedback_weight = original_feedback ; for unkonw reason feedback_weight for some links isn't set in the previous operation
           [
-          show word "error weigh detected and corrected" other_turtle
+
           set feedback_weight feedback_weight + feedback
 
         ]
 
+                if original_correct_feedback_weight = correct_feedback_weight ; for unkonw reason feedback_weight for some links isn't set in the previous operation
+          [
+
+          set correct_feedback_weight correct_feedback_weight + correctfeedback
+
+        ]
 
       ]
 
@@ -541,10 +589,10 @@ to setup-feedback_edges_between [peer1 peer2 feedback] ; P1 => P2
     ]
 
     ; make the network look a little prettier
-    repeat 10
-    [
-      layout-spring turtles links 0.3 (world-width / (sqrt number_of_nodes)) 1
-    ]
+   ; repeat 10
+   ; [
+    ;  layout-spring turtles links 0.3 (world-width / (sqrt number_of_nodes)) 1
+    ;]
 
 end
 
@@ -612,6 +660,70 @@ to compute-local-trust [peer1 peer2]  ;local trust that peer1 has in 2
   ]
 end
 
+
+to compute-correct-local-trust [peer1 peer2]  ;local trust that peer1 has in 2
+
+  let sigma_tx 0 ; Sigma tx
+  let sum_p_q 0 ; Sum(P,Q)
+  let sigma_sum 0; Sigma sum
+  let S 0 ; S(P,Q)
+   ask peer1
+  [
+    ;print (word "list " peer1 "is" list_other_peer_id)
+
+    ask my-out-links[
+    print (word "N of malicious tx number is " No_malicious_transaction_between_src_dest)
+    let AR_p_q   (total_transaction_between_src_dest - No_malicious_transaction_between_src_dest) / total_transaction_between_src_dest
+    if correct_feedback_weight > 0 [set sum_p_q correct_feedback_weight * AR_p_q]
+    set sigma_sum sigma_sum + sum_p_q ; => in eigentrust they use  sigma max 0, s to avoid summing neg sum_p_q as they don't turn it to 0 if neg as we do
+    ]
+
+
+    ask out-link-to peer2[
+
+    let AR_p_q   (total_transaction_between_src_dest - No_malicious_transaction_between_src_dest) / total_transaction_between_src_dest
+    ifelse correct_feedback_weight > 0 [
+        set sum_p_q correct_feedback_weight * AR_p_q
+      ]
+      [
+          set sum_p_q 0
+
+      ]
+
+       ifelse sigma_sum != 0
+      [
+        ifelse sum_p_q > 0
+        [set S sum_p_q / sigma_sum
+          set  correct_local_trust_ S
+        ]
+        [set  correct_local_trust_ 0]
+      ]
+      [set  correct_local_trust_ 0]
+
+
+       ; set label precision local_trust_ 3
+    ]
+
+      ask my-out-links [ ;update other LT after the change of LT peer1=> peer2
+      show word "old local correct_local_trust_" correct_local_trust_
+      let AR_p_q   (total_transaction_between_src_dest - No_malicious_transaction_between_src_dest) / total_transaction_between_src_dest
+      ifelse correct_feedback_weight > 0 [set sum_p_q correct_feedback_weight * AR_p_q][set sum_p_q  0]
+
+       ifelse sigma_sum != 0
+      [ifelse sum_p_q > 0
+        [set S sum_p_q / sigma_sum
+          set  correct_local_trust_ S
+        ]
+        [set  correct_local_trust_ 0]
+      ]
+      [set  correct_local_trust_ 0
+      ]
+
+       ; set label precision local_trust_ 3
+    ]
+
+  ]
+end
 
 
 to compute-local-trust2 [peer1 peer2]  ;local trust that peer1 has in 2
@@ -710,13 +822,53 @@ ask peer
     [ print (word "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" GT_P "of" self) ]
 
     print (word "====> new GT of" peer "is " GT_P)
-
-    ;ifelse default_or_cumul [set global_trust_value  global_initial_trust_value + GT_P]
-    ;[
-      set global_trust_value   GT_P
-    ;]
+    set global_trust_value precision  GT_P 4
 
     set label precision global_trust_value  3
+]
+
+
+end
+
+to compute-correct-global-trust [peer]
+
+;let total_trust 0.0
+show word "computing GT of " peer
+ask peer
+[
+    let GT_P correct_global_trust_value
+    let GT_P' 0
+    let GTs []
+    let sum_GT_P sum_correct_global_trust  peer ;sum of GT of peers pointing to current peer
+
+   ask in-link-neighbors [
+
+       ; set the GT of current peer
+       let GT_i correct_global_trust_value
+
+        ask out-link-to peer [
+        let local_trust_i correct_local_trust_
+        let v compute_logistic other-end
+        if sum_GT_P > 0
+        [
+          let GT_P_i (local_trust_i * GT_i * v ) / (sum_GT_P)
+        set GTs lput GT_P_i GTs
+          ]
+        ]
+
+      ]
+
+    ifelse length GTs > 0
+    [
+      set GT_P  sum GTs
+    ]
+    [
+      set GT_P correct_global_trust_value
+    ];if no in neighbors keep correct_global_trust_value
+
+    print (word "====> new GT of correct GT" peer "is " GT_P)
+    set correct_global_trust_value  precision GT_P 4
+
 ]
 
 
@@ -745,16 +897,29 @@ report temp_sum
 end
 
 
+to-report sum_correct_global_trust[ peer]
+  let temp_sum 0
+  ask peer[
+
+ ;set old_GT sum [global_trust_value] of turtles ;
+    ask in-link-neighbors [
+     set temp_sum temp_sum + correct_global_trust_value
+
+    ]
+  ]
+
+report temp_sum
+end
 
 to-report globabl_trust_sum_all_peers ;used in output
 
 let globabl_trust_sum_all_peers_ 0
-let tick_checkpoint current_ticks mod update_trust_interval
+;let tick_checkpoint current_ticks mod update_trust_interval
 
-if update_trust_or_not and (tick_checkpoint > 0)
-[
+;if update_trust_or_not and (tick_checkpoint > 0)
+;[
 set globabl_trust_sum_all_peers_ sum [global_trust_value] of turtles
-]
+;]
 report globabl_trust_sum_all_peers_
 end
 
@@ -892,12 +1057,11 @@ to update_trust_with_global_trust
    while [not convergence old_GT global_trust_value ]
     [
     set old_GT global_trust_value
-  ;ask turtles [ ; ask all peers
+
     compute-global-trust self
 
   print (word "old_GT " self  " " old_GT "global_trust_value is " global_trust_value)
 
-  ;set new_GT sum [global_trust_value] of turtles ;
   print ( word "the convergence old_GT" old_GT "and conv is " convergence old_GT global_trust_value)
 
     ]
@@ -911,6 +1075,41 @@ end
 
 
 
+to update_trust_with_correct_global_trust
+  show "=============================================== updating correct trust"
+
+  ;let old_GT sum [global_trust_value] of turtles ;
+  ;let new_GT old_GT
+
+
+  let list_T_i []
+  let list_T_i+1 []
+    ask turtles [ ; ask all peers
+    ;set old_GT lput global_trust_value old_GT
+    ;print (word "correct_ trust of " self "before is " correct_global_trust_value)
+    set list_T_i lput correct_global_trust_value list_T_i
+    set old__correct_GT correct_global_trust_value
+    compute-correct-global-trust self
+    ;print (word "global trust of " self "after is " global_trust_value)
+    set list_T_i+1 lput correct_global_trust_value list_T_i+1
+      ]
+
+   ;set new_GT sum [global_trust_value] of turtles ;
+
+  ask turtles [
+   while [not convergence old__correct_GT correct_global_trust_value ]
+    [
+    set old__correct_GT correct_global_trust_value
+    compute-correct-global-trust self
+
+    ]
+   ;set  trust_score alpha * global_trust_value * user_behaviour + beta * device_security
+   ;show word "trust_score" trust_score
+]
+  show "====================Successfull convergence==============================="
+
+
+end
 
 to-report convergence [GT GT']
 let converge false
