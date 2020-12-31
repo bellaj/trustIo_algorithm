@@ -1,4 +1,4 @@
- ;directed-link-breed [  Dlinks Dlink]
+;directed-link-breed [  Dlinks Dlink]
 ;Dlinks-own[
 ;  feedback_weight ; total sum of feedbacks between 2 peers
 ;  No_malicious_transaction_between_src_dest
@@ -188,9 +188,7 @@ end
 
 to go
 
-
   if not any? turtles [stop] ;exits if there are no more turtles
-
   set current_ticks ticks
   show "---------------------------------"
   show word "the current tick " current_ticks
@@ -209,7 +207,7 @@ to go
     ]
 
     let peers_neighbours nobody
-
+    
     ifelse remove_dangling_nodes[
       set peers_neighbours up-to-n-of number_of_peers turtles with [ count my-in-links = 0 and count my-out-links = 0]
       print( word "selected dangling neighbours " peers_neighbours count peers_neighbours )
@@ -226,29 +224,26 @@ to go
     ask peers_neighbours  [
       all_transact self
      ]
-
   ]
-  [ ont_to_one_transact ] ; one peer transacts per tick
+  [
+    ont_to_one_transact 
+  ] ; one peer transacts per tick
 
   ;let tick_checkpoint current_ticks mod update_trust_interval
-
- ; if update_trust_or_not and (tick_checkpoint = 0) [   ;update the trust in the network after update_trust_interval tick
+  ;if update_trust_or_not and (tick_checkpoint = 0) [   ;update the trust in the network after update_trust_interval tick
   ;show word "------------------tick_checkpoint---------------" tick_checkpoint
   ;update_trust_with_total_trust
   ;set number_of_iterations 0
   update_trust_with_global_trust
-
   update_trust_with_correct_global_trust
-
- ; set trust_checkpoint tick_checkpoint
-
+  ;set trust_checkpoint tick_checkpoint
   ;]
   ;if current_ticks > 50  [clear-output]
   ;layout
   ;ask turtles [
   ;set total_Local_trust sum [local_trust_] of my-out-links
   ;print( word"--9999---  total local trust of " self "in others is " round total_Local_trust)
- ; ]
+  ;]
   layout2
   tick
 end
@@ -267,17 +262,15 @@ to all_transact [peer1]
 
 
    let potential_partners_list find-potential_peers-to-connect-with 1 [who] of peer1  ;nodes providing the service
-  ;<========== Already sorted by trust_score
-  ;set sorted_list sort-on [(- trust_score)] potential_peers
-  ;let potential_partners_sorted_pertinence sort-on [(- trust_score )] potential_partners_list
-
-  print (word "==> potential_partners_list of" peer1 " are " potential_partners_list )
-
+    ;<========== Already sorted by trust_score
+    ;set sorted_list sort-on [(- trust_score)] potential_peers
+    ;let potential_partners_sorted_pertinence sort-on [(- trust_score )] potential_partners_list
+    print (word "==> potential_partners_list of" peer1 " are " potential_partners_list )
     ;;check if there are items in the list
     let peer2 0 ; will host the other peer who provides the service
 
-   ;set sorted_list sort-on [(- trust_score)] potential_peers
-      ;;select a random peer
+    ;set sorted_list sort-on [(- trust_score)] potential_peers
+    ;;select a random peer
     ifelse choose_random_or_most_trusted ; if true => random if not =>most trusted
     [
       set peer2 item random (length potential_partners_list) potential_partners_list
@@ -295,8 +288,8 @@ to all_transact [peer1]
 
 
     ;;perform the transaction between two peers
-    perform-transaction-and-rate peer1 peer2    ;peer2 send tx to peer1 and get feedback freom it
-
+  ifelse malicious_transactions_percentage = 0[perform-transaction-and-rate peer1 peer2]    ;peer2 send tx to peer1 and get feedback freom it
+    [perform-transaction-and-rate_with_probability peer1 peer2 ]
     ;compute-global-trust peer2
 end
 
@@ -422,6 +415,108 @@ print( word "the list sorted_list is " sorted_list)
 end
 
 
+to perform-transaction-and-rate_with_probability [peer1 peer2]   ; Transaction is from peer2 to peer1
+
+   
+  let peer1_id [who] of peer1 ; destination
+  let peer2_id [who] of peer2 ; source
+
+  ;;get the exact time of the transaction
+  let time_of_transaction current_ticks
+  let rand random 100
+
+  let peer2_act_maliciously false
+
+  if [malicious] of peer2 ;;this peer is malicious ; it gives only malicious tx
+    [
+    if rand < malicious_transactions_percentage ; % defined by interface and < 100
+     [
+      set peer2_act_maliciously true
+    ]
+    ]
+
+ 
+  ;;perform actions via peer1
+  ask turtle peer1_id
+  [
+   print (word "==> peer " peer1 "requests tx from" peer2 )
+   ;;update origional peer (peer1) feedback history based on the feedback from peer2
+
+   
+
+      ifelse peer2_act_maliciously     [ ;peer 2 is malicious
+
+      ifelse not [malicious] of peer1 [ ;peer1 not malicious => peer2 malicious
+        setup-feedback_edges_between peer1 peer2 -1 -1
+        set malicious_transactions malicious_transactions + 1
+        print( word "the given feedback setup-feedback_edges_between peer1 peer2 -1 -1")
+      ]
+      [ ;peer1 is malicious
+
+        ifelse rand < malicious_feedback_percentage [ ;peer1  malicious => peer2  malicious
+        setup-feedback_edges_between peer1 peer2 1 -1
+        set successful_transactions successful_transactions + 1
+         print( word "the given feedback setup-feedback_edges_between peer1 peer2 1 -1")
+        ]
+         
+        [setup-feedback_edges_between peer1 peer2 -1 -1
+        set malicious_transactions malicious_transactions + 1
+        print( word "the given feedback  setup-feedback_edges_between peer1 peer2 -1 -1")
+        ]
+
+      ]
+
+    ]
+    [ ;peer 2 is honnest
+
+        ifelse not [malicious] of peer1 [ ;peer1 not malicious peer 2 is honnest
+        setup-feedback_edges_between peer1 peer2 1 1
+        set successful_transactions successful_transactions + 1
+        print (word "x setup-feedback_edges_between peer1 peer2 1 1")
+      ]
+      [;peer1 malicious feedback inversed
+        ;peer1 malicious
+         ifelse rand < malicious_feedback_percentage [  ;peer1 malicious peer 2 is honnest
+         setup-feedback_edges_between peer1 peer2 -1 1
+         set malicious_transactions malicious_transactions + 1
+         print (word "setup-feedback_edges_between peer1 peer2 -1 1")
+       ]
+        [;peer1 not malicious peer 2 is honnest
+          setup-feedback_edges_between peer1 peer2 1 1
+        set successful_transactions successful_transactions + 1
+        print (word "x setup-feedback_edges_between peer1 peer2 1 1")
+        ]
+
+    ]
+    ]
+
+
+     ask out-link-to peer2 [
+       if peer2_act_maliciously
+      [
+          if not [malicious] of peer1
+        [
+        ;print( word "acts maliciously" peer2)
+        set No_malicious_transaction_between_src_dest No_malicious_transaction_between_src_dest + 1 ; one more malicious tx
+        print (word "No_malicious_transaction_between_src_dest in incremented even (peer1 not malicious) and new value is " No_malicious_transaction_between_src_dest)
+        ]
+
+      ]
+      set total_transaction_between_src_dest total_transaction_between_src_dest + 1
+
+    ]
+
+    compute-local-trust peer1 peer2
+    compute-correct-local-trust peer1 peer2
+
+set peer_total_transactions peer_total_transactions + 1
+
+   ]
+
+
+  set total_global_transactions total_global_transactions + 1
+end
+
 
 
 
@@ -443,29 +538,16 @@ to perform-transaction-and-rate [peer1 peer2]   ; Transaction is from peer2 to p
 
   if [malicious] of peer2 ;;this peer is malicious ; it gives only malicious tx
     [
-    ;if random 101 <= malicious_transactions_percentage ; % defined by interface and < 100
-    ; [
-      set peer2_act_maliciously true
-    ;]
-    ]
+       set peer2_act_maliciously true
+     ]
 
- if not [malicious] of peer2
-    [
-      if random 100 < malicious_transactions_percentage ; % defined by interface and < 100  "if random 101 < 100"
-        ;[    set peer2_act_maliciously false      ] ;[0-100]<0=> never ; [0-100]<100=> always
-      [    set peer2_act_maliciously true     ]
-    ]
-
-
+ 
   ;;perform actions via peer1
   ask turtle peer1_id
   [
    print (word "==> peer " peer1 "requests tx from" peer2 )
-   ;;update origional peer (peer1) feedback history based on the feedback from peer2
-
-  ;  ifelse malicious_feedback_percentage =0 [ ;peer
-
-      ifelse peer2_act_maliciously     [ ;peer 2 is malicious
+ 
+    ifelse peer2_act_maliciously     [ ;peer 2 is malicious
 
       ifelse not [malicious] of peer1 [ ;peer1 not malicious => peer2 malicious
         setup-feedback_edges_between peer1 peer2 -1 -1
@@ -473,18 +555,11 @@ to perform-transaction-and-rate [peer1 peer2]   ; Transaction is from peer2 to p
         print( word "the given feedback setup-feedback_edges_between peer1 peer2 -1 -1")
       ]
       [ ;peer1 is malicious
-
-        ;ifelse random 100 < malicious_feedback_percentage [ ;peer1  malicious => peer2  malicious
-        ;setup-feedback_edges_between peer1 peer2 1 -1
-        ;set successful_transactions successful_transactions + 1
-         ; print( word "the given feedback setup-feedback_edges_between peer1 peer2 1 -1")
-        ;]
-        ;[ ;peer1 malicious => peer2  malicious
+ 
         setup-feedback_edges_between peer1 peer2 1 -1
         set malicious_transactions malicious_transactions + 1
           print( word "the given f   setup-feedback_edges_between peer1 peer2 1 -1")
-        ;]
-
+       
       ]
 
     ]
@@ -495,19 +570,12 @@ to perform-transaction-and-rate [peer1 peer2]   ; Transaction is from peer2 to p
         set successful_transactions successful_transactions + 1
         print (word "x setup-feedback_edges_between peer1 peer2 1 1")
       ]
-      [;peer1 malicious feedback inversed
-        ;peer1 malicious
-         ;ifelse random 100 < malicious_feedback_percentage [  ;peer1 malicious peer 2 is honnest
-        ;setup-feedback_edges_between peer1 peer2 -1 1
-        ;set malicious_transactions malicious_transactions + 1
-         ; print (word "setup-feedback_edges_between peer1 peer2 -1 1")
-        ;]
-        ;[;peer1 not malicious peer 2 is honnest
+      [ 
           setup-feedback_edges_between peer1 peer2 -1 1
         set successful_transactions successful_transactions + 1
-      ;]
+      
         print (word " setup-feedback_edges_between peer1 peer2 -1 1")
-      ;]
+      
 
     ]
     ]
