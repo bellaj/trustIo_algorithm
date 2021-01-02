@@ -207,7 +207,7 @@ to go
     ]
 
     let peers_neighbours nobody
-    
+
     ifelse remove_dangling_nodes[
       set peers_neighbours up-to-n-of number_of_peers turtles with [ count my-in-links = 0 and count my-out-links = 0]
       print( word "selected dangling neighbours " peers_neighbours count peers_neighbours )
@@ -226,7 +226,7 @@ to go
      ]
   ]
   [
-    ont_to_one_transact 
+    ont_to_one_transact
   ] ; one peer transacts per tick
 
   ;let tick_checkpoint current_ticks mod update_trust_interval
@@ -382,10 +382,10 @@ to-report find-potential_peers-to-connect-with [required-service peerid] ; requi
   let potential_peers []
   ifelse malicious_gives_only_feedback
   [
-    set potential_peers other turtles with [service = required-service and who != peerid and (count my-in-links <= max_in_links) and trust_score >= trust_threshold and malicious = false ] ; select new neighbours with specific conditions
+    set potential_peers other turtles with [service = required-service and who != peerid and (count my-in-links <= max_in_links) and trust_score > trust_threshold and malicious = false ] ; select new neighbours with specific conditions
   ]
   [
-    set potential_peers other turtles with [service = required-service and who != peerid and (count my-in-links <= max_in_links) and trust_score >= trust_threshold   ] ; select new neighbours with specific conditions
+    set potential_peers other turtles with [service = required-service and who != peerid and (count my-in-links <= max_in_links) and trust_score > trust_threshold   ] ; select new neighbours with specific conditions
   ]
     ;print( word "the list of potential peeers with specific values  service" required-service "for the peer" peerid  )
 
@@ -417,7 +417,7 @@ end
 
 to perform-transaction-and-rate_with_probability [peer1 peer2]   ; Transaction is from peer2 to peer1
 
-   
+
   let peer1_id [who] of peer1 ; destination
   let peer2_id [who] of peer2 ; source
 
@@ -435,14 +435,14 @@ to perform-transaction-and-rate_with_probability [peer1 peer2]   ; Transaction i
     ]
     ]
 
- 
+
   ;;perform actions via peer1
   ask turtle peer1_id
   [
    print (word "==> peer " peer1 "requests tx from" peer2 )
    ;;update origional peer (peer1) feedback history based on the feedback from peer2
 
-   
+
 
       ifelse peer2_act_maliciously     [ ;peer 2 is malicious
 
@@ -458,7 +458,7 @@ to perform-transaction-and-rate_with_probability [peer1 peer2]   ; Transaction i
         set successful_transactions successful_transactions + 1
          print( word "the given feedback setup-feedback_edges_between peer1 peer2 1 -1")
         ]
-         
+
         [setup-feedback_edges_between peer1 peer2 -1 -1
         set malicious_transactions malicious_transactions + 1
         print( word "the given feedback  setup-feedback_edges_between peer1 peer2 -1 -1")
@@ -541,12 +541,12 @@ to perform-transaction-and-rate [peer1 peer2]   ; Transaction is from peer2 to p
        set peer2_act_maliciously true
      ]
 
- 
+
   ;;perform actions via peer1
   ask turtle peer1_id
   [
    print (word "==> peer " peer1 "requests tx from" peer2 )
- 
+
     ifelse peer2_act_maliciously     [ ;peer 2 is malicious
 
       ifelse not [malicious] of peer1 [ ;peer1 not malicious => peer2 malicious
@@ -555,11 +555,11 @@ to perform-transaction-and-rate [peer1 peer2]   ; Transaction is from peer2 to p
         print( word "the given feedback setup-feedback_edges_between peer1 peer2 -1 -1")
       ]
       [ ;peer1 is malicious
- 
+
         setup-feedback_edges_between peer1 peer2 1 -1
         set malicious_transactions malicious_transactions + 1
           print( word "the given f   setup-feedback_edges_between peer1 peer2 1 -1")
-       
+
       ]
 
     ]
@@ -570,12 +570,12 @@ to perform-transaction-and-rate [peer1 peer2]   ; Transaction is from peer2 to p
         set successful_transactions successful_transactions + 1
         print (word "x setup-feedback_edges_between peer1 peer2 1 1")
       ]
-      [ 
+      [
           setup-feedback_edges_between peer1 peer2 -1 1
         set successful_transactions successful_transactions + 1
-      
+
         print (word " setup-feedback_edges_between peer1 peer2 -1 1")
-      
+
 
     ]
     ]
