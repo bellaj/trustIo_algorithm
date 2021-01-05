@@ -54,6 +54,7 @@ turtles-own [
   user_behaviour
   device_security
   number_of_iterations
+  pertinence_ratio;
 ]
 
 
@@ -91,7 +92,7 @@ to setup-nodes
     set number_of_iterations 0
     ;;set the label for the nodes
     set label precision global_trust_value 3 ;1.25 2 digits after .
-
+    set pertinence_ratio 0
     ;;set malicious status
     set malicious false
 
@@ -190,11 +191,16 @@ to go
 
   if not any? turtles [stop] ;exits if there are no more turtles
   set current_ticks ticks
+  set time current_ticks
   show "---------------------------------"
   show word "the current tick " current_ticks
   show "---------------------------------"
   ask turtles [; reinitialization
   set number_of_iterations 0
+  let degree count my-in-links
+    ifelse degree > 0
+    [set pertinence_ratio trust_score / degree ]
+    [set pertinence_ratio trust_score ]
   ]
 
   ifelse all_peers_transact [
@@ -271,14 +277,20 @@ to all_transact [peer1]
 
     ;set sorted_list sort-on [(- trust_score)] potential_peers
     ;;select a random peer
-    ifelse choose_random_or_most_trusted ; if true => random if not =>most trusted
+   ifelse order_by_pertinence_ratio[
+      let tset turtle-set potential_partners_list;
+      let sorted_ratio_list sort-on [( - pertinence_ratio)] tset;
+    ;turtle-set
+      set peer2 item 0 sorted_ratio_list;
+  ]
+  [    ifelse choose_random_or_most_trusted ; if true => random if not =>most trusted
     [
       set peer2 item random (length potential_partners_list) potential_partners_list
     ]
     [
       set peer2 item 0 potential_partners_list ;;set the chosen peer to the most trusted peer
     ]
-
+  ]
       ;;final check
       if [who] of peer1 = [who] of peer2
       [
@@ -288,7 +300,8 @@ to all_transact [peer1]
 
 
     ;;perform the transaction between two peers
-  ifelse malicious_transactions_percentage = 0[perform-transaction-and-rate peer1 peer2]    ;peer2 send tx to peer1 and get feedback freom it
+  ifelse malicious_transactions_percentage = 0
+    [perform-transaction-and-rate peer1 peer2]    ;peer2 send tx to peer1 and get feedback freom it
     [perform-transaction-and-rate_with_probability peer1 peer2 ]
     ;compute-global-trust peer2
 end
